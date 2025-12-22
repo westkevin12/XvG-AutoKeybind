@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / Packaging
+build/
+dist/
+*.spec
+installer.iss
+
+# User Data
+profiles.json
+profiles.dat
+
+# Secrets / Keys
+*.pem
+key.pem
+cert.pem
+
+# Logs / Output
+Output/

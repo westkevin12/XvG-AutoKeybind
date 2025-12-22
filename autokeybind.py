@@ -10,275 +10,277 @@ import os
 import sys
 import json
 
-# Initialize profiles dictionary
-profiles = {}
-coords = []
-active_profile = None
+class KeybindApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("XvG Auto Keybind")
+        self.root.wm_attributes("-topmost", 1)
+        self.root.geometry("300x550")
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
-# Function to load profiles from a .json file and set the active profile
-def load_profiles():
-    global active_profile, coords, profiles
-    default_profile_name = "Default"
+        # Application State
+        self.profiles = {}
+        self.coords = []
+        self.active_profile = None
+        self.add_keybind_mode = False
+        
+        # Load Data
+        self.load_profiles()
 
-    # Check if the profiles file exists
-    if os.path.exists('profiles.json'):
+        # Setup UI
+        self.setup_ui()
+
+        # Setup System Tray
+        self.setup_tray_icon()
+
+        # Start Input Listeners
+        self.start_listeners()
+
+    def load_profiles(self):
+        self.profiles = {}
+        default_profile_name = "Default"
+        
+        if os.path.exists('profiles.json'):
+            try:
+                with open('profiles.json', 'r') as file:
+                    self.profiles = json.load(file)
+            except (FileNotFoundError, json.JSONDecodeError):
+                pass # Handle empty or corrupt file gracefully
+
+        if not self.profiles:
+             self.profiles = {default_profile_name: {'keybinds': {}}}
+        
+        # Ensure active profile is valid
+        if self.active_profile not in self.profiles:
+            if default_profile_name in self.profiles:
+                self.active_profile = default_profile_name
+            else:
+                self.active_profile = list(self.profiles.keys())[0]
+        
+        self.save_profiles() # Ensure consistent state on disk
+
+    def save_profiles(self):
+        with open('profiles.json', 'w') as file:
+            json.dump(self.profiles, file, indent=4)
+
+    def setup_ui(self):
+        # Icon
+        self.set_window_icon()
+
+        # Main Layout Frame
+        main_frame = tk.Frame(self.root, padx=10, pady=10)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Key Entry Section
+        tk.Label(main_frame, text="Enter Key:").pack(pady=(0, 5))
+        self.key_entry = Entry(main_frame)
+        self.key_entry.pack(fill=tk.X, pady=(0, 10))
+
+        # Action Buttons
+        button_frame = tk.Frame(main_frame)
+        button_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        self.add_button = Button(button_frame, text="Add Keybind", command=self.add_keybind)
+        self.add_button.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+        
+        self.reset_button = Button(button_frame, text="Reset Profile", command=self.clear_keybinds)
+        self.reset_button.pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=(5, 0))
+
+        self.view_binds_button = Button(main_frame, text="View/Edit Binds", command=self.show_keybinds)
+        self.view_binds_button.pack(fill=tk.X, pady=(0, 20))
+
+        # Profile Section
+        tk.Label(main_frame, text="Profiles:").pack(anchor=tk.W)
+        self.profile_listbox = Listbox(main_frame, selectmode=tk.SINGLE, height=6)
+        self.profile_listbox.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        self.profile_listbox.bind("<<ListboxSelect>>", self.activate_profile)
+        self.refresh_profile_list()
+
+        # Profile Buttons
+        profile_btn_frame = tk.Frame(main_frame)
+        profile_btn_frame.pack(fill=tk.X, pady=(0, 10))
+
+        Button(profile_btn_frame, text="Add", command=self.add_profile_action).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        Button(profile_btn_frame, text="Rename", command=self.rename_profile_action).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        Button(profile_btn_frame, text="Remove", command=self.remove_profile_action).pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        # Status Bar
+        self.status_var = tk.StringVar()
+        self.status_var.set(f"Active Profile: {self.active_profile}")
+        status_label = Label(self.root, textvariable=self.status_var, bd=1, relief=tk.SUNKEN, anchor=tk.W, bg="#f0f0f0")
+        status_label.pack(side=tk.BOTTOM, fill=tk.X)
+
+    def set_window_icon(self):
         try:
-            with open('profiles.json', 'r') as file:
-                profiles = json.load(file)
+            if getattr(sys, 'frozen', False):
+                icon_path = os.path.join(sys._MEIPASS, 'icon.ico')
+            else:
+                icon_path = 'icon.ico'
+            
+            if os.path.exists(icon_path):
+                icon = Image.open(icon_path)
+                icon_photo = ImageTk.PhotoImage(icon)
+                self.root.tk.call('wm', 'iconphoto', self.root._w, icon_photo)
+        except Exception as e:
+            print(f"Failed to load icon: {e}")
 
-            if not active_profile:
-                active_profile = default_profile_name
+    def refresh_profile_list(self):
+        self.profile_listbox.delete(0, tk.END)
+        for profile_name in self.profiles:
+            self.profile_listbox.insert(tk.END, profile_name)
+            if profile_name == self.active_profile:
+                self.profile_listbox.selection_set(tk.END)
 
-        except (FileNotFoundError, json.JSONDecodeError):
-            pass  # Failed to open or decode the profiles file
+    def update_status(self, message):
+         self.status_var.set(message)
 
-# Function to save profiles to a .json file
-def save_profiles():
-    global profiles
-    with open('profiles.json', 'w') as file:
-        json.dump(profiles, file, indent=4)
+    # --- Logic Methods ---
 
-# Function to add a profile
-def add_profile(profile_name):
-    global active_profile, profiles
-    if profile_name not in profiles:
-        profiles[profile_name] = {'keybinds': {}}
-        save_profiles()
-    else:
-        print("Profile already exists.")
-        load_profiles()
+    def add_keybind(self):
+        self.add_keybind_mode = True
+        self.key_entry.delete(0, tk.END)
+        self.add_button.config(state=tk.DISABLED, text="Press Key & Click...")
+        self.update_status("Press a key then click a location...")
 
-# Function to remove a profile
-def remove_profile(profile_name):
-    global active_profile, profiles
-    if profile_name in profiles:
-        del profiles[profile_name]
-        save_profiles()
-    else:
-        print("Profile does not exist.")
+    def click_coordinate(self, x, y):
+        original_position = pyautogui.position()
+        pyautogui.click(x, y)
+        pyautogui.moveTo(original_position)
 
-# Function to rename a profile
-def rename_profile(old_name, new_name):
-    global active_profile, profiles
-    if old_name in profiles:
-        profiles[new_name] = profiles.pop(old_name)
-        save_profiles()
-    else:
-        print("Profile does not exist.")
+    def on_key_release(self, key):
+        try:
+            key_str = getattr(key, 'char', None) # Handle special keys gracefully
+            if not key_str: return
 
-# Function to click a coordinate from the active profile
-def click_coordinate(x, y):
-    original_position = pyautogui.position()
-    pyautogui.click(x, y)
-    pyautogui.moveTo(original_position)
+            if self.active_profile and key_str in self.profiles[self.active_profile]['keybinds']:
+                index = self.profiles[self.active_profile]['keybinds'][key_str]
+                if 0 <= index < len(self.coords):
+                    x, y = self.coords[index]
+                    self.click_coordinate(x, y)
+        except Exception:
+            pass 
 
-# Function to add a keybind
-def add_keybind():
-    add_keybind_mode[0] = True
-    key_entry.delete(0, tk.END)
-    add_button.config(state=tk.DISABLED)
-
-# Function to handle key releases and click the corresponding coordinate
-def on_key_release(key):
-    global active_profile, coords
-    try:
-        key_str = key.char
-        if active_profile and 'keybinds' in profiles[active_profile] and key_str in profiles[active_profile]['keybinds']:
-            index = profiles[active_profile]['keybinds'][key_str]
-            if 0 <= index < len(coords):
-                x, y = coords[index]
-                click_coordinate(x, y)
-    except AttributeError:
+    def capture_mouse_position(self, x, y, button, pressed):
         pass
 
-# Function to capture mouse position
-def capture_mouse_position(x, y, button, pressed):
-    global active_profile, coords
-    if pressed and add_keybind_mode[0]:
-        coords.append((x, y))
-        key = key_entry.get()
-        if key and key not in profiles[active_profile]['keybinds']:
-            profiles[active_profile]['keybinds'][key] = len(coords) - 1
-            save_profiles()
-        key_entry.delete(0, tk.END)
-        add_keybind_mode[0] = False
-        add_button.config(state=tk.NORMAL)
+    def on_click(self, x, y, button, pressed):
+        if pressed and self.add_keybind_mode:
+            self.coords.append((x, y))
+            
+            # Save bind
+            profile_data = self.profiles[self.active_profile]
+            profile_data['keybinds'][self.pending_key] = len(self.coords) - 1
+            self.save_profiles()
+            
+            # Reset UI
+            self.key_entry.delete(0, tk.END)
+            self.add_keybind_mode = False
+            self.add_button.config(state=tk.NORMAL, text="Add Keybind")
+            self.update_status(f"Bound '{self.pending_key}' to ({x}, {y})")
 
-# Function to clear keybinds
-def clear_keybinds():
-    global active_profile
-    profiles[active_profile]['keybinds'].clear()
-    save_profiles()
+    # Connect listeners
+    def start_listeners(self):
+        self.keyboard_listener = Listener(on_release=self.on_key_release)
+        self.mouse_listener = MouseListener(on_click=self.on_click)
+        
+        self.keyboard_listener.start()
+        self.mouse_listener.start()
 
-# Function to show and edit keybinds
-def show_keybinds():
-    global active_profile, coords
-    if active_profile in profiles:
-        keybind_window = tk.Toplevel()
-        keybind_window.title("Edit Keybinds")
-        keybind_window.wm_attributes("-topmost", 2)
-        keybind_listbox = Listbox(keybind_window, selectmode=tk.SINGLE)
-        keybind_listbox.pack()
+    # Profile Management methods
+    def add_profile_action(self):
+        name = simpledialog.askstring("Add Profile", "Enter Profile Name:")
+        if name:
+            if name in self.profiles:
+                messagebox.showerror("Error", "Profile already exists.")
+                return
+            self.profiles[name] = {'keybinds': {}}
+            self.save_profiles()
+            self.refresh_profile_list()
+            self.update_status(f"Created profile '{name}'")
 
-        for key, index in profiles[active_profile]['keybinds'].items():
-            index = profiles[active_profile]['keybinds'][key]
-            if 0 <= index < len(coords):
-                keybind_listbox.insert(tk.END, f"{key}: coords: {coords[index]}")
+    def remove_profile_action(self):
+        name = self.get_selected_profile()
+        if name:
+            if name == "Default" and len(self.profiles) == 1:
+                messagebox.showwarning("Warning", "Cannot delete the last profile.")
+                return
+            
+            if messagebox.askyesno("Confirm", f"Remove profile '{name}'?"):
+                del self.profiles[name]
+                
+                if self.active_profile == name:
+                    self.active_profile = list(self.profiles.keys())[0] # Switch to another
+                
+                self.save_profiles()
+                self.refresh_profile_list()
+                self.update_status(f"Removed profile '{name}'")
 
-        def delete_keybind():
-            global active_profile, coords
-            selected_index = keybind_listbox.curselection()
-            if selected_index:
-                selected_index = int(selected_index[0])
-                key = list(profiles[active_profile]['keybinds'].keys())[selected_index]
-                del profiles[active_profile]['keybinds'][key]
-                keybind_listbox.delete(selected_index)
-                save_profiles()
+    def rename_profile_action(self):
+        name = self.get_selected_profile()
+        if name:
+            new_name = simpledialog.askstring("Rename", f"New name for '{name}':")
+            if new_name and new_name not in self.profiles:
+                self.profiles[new_name] = self.profiles.pop(name)
+                if self.active_profile == name:
+                    self.active_profile = new_name
+                self.save_profiles()
+                self.refresh_profile_list()
+                self.update_status(f"Renamed '{name}' to '{new_name}'")
 
-        delete_button = Button(keybind_window, text="Delete", command=delete_keybind)
-        delete_button.pack()
+    def get_selected_profile(self):
+        selection = self.profile_listbox.curselection()
+        if selection:
+            return self.profile_listbox.get(selection[0])
+        return None
 
-        instruction_label = Label(keybind_window, text="Select a keybind to delete")
-        instruction_label.pack()
+    def activate_profile(self, event):
+        selection = self.get_selected_profile()
+        if selection:
+            self.active_profile = selection
+            self.update_status(f"Active Profile: {self.active_profile}")
 
-# Function to handle the application exit
-def on_close():
-    listener.stop()
-    mouse_listener.stop()
-    save_profiles()
-    sys.exit(0)
+    def clear_keybinds(self):
+        if messagebox.askyesno("Confirm", f"Clear all keybinds in '{self.active_profile}'?"):
+            self.profiles[self.active_profile]['keybinds'].clear()
+            self.save_profiles()
+            self.update_status("Keybinds cleared.")
 
-# Function to create the system tray icon
-def create_system_tray_icon():
-    menu = (
-        pystray.MenuItem('Exit', on_exit),
-    )
+    def show_keybinds(self):
+        win = tk.Toplevel(self.root)
+        win.title(f"Keybinds: {self.active_profile}")
+        win.geometry("300x300")
+        
+        lb = Listbox(win)
+        lb.pack(fill=tk.BOTH, expand=True)
 
-    if getattr(sys, 'frozen', False):
-        icon_path = os.path.join(sys._MEIPASS, 'icon.ico')
-    else:
-        icon_path = 'icon.ico'
+        current_binds = self.profiles[self.active_profile]['keybinds']
+        for key, val in current_binds.items():
+             lb.insert(tk.END, f"Key '{key}' -> {val}")
 
-    icon_image = Image.open(icon_path)
-    icon = pystray.Icon("name", icon_image, menu=menu)
-    return icon
+    def on_close(self):
+        self.keyboard_listener.stop()
+        self.mouse_listener.stop()
+        self.tray_icon.stop()
+        self.root.destroy()
+        sys.exit(0)
 
-# Function to handle exit from system tray
-def on_exit(icon, item):
-    icon.stop()
-    on_close()
-
-if not profiles:
-    load_profiles()
-    if not profiles:
-        default_profile_name = "Default"
-        add_profile(default_profile_name)
-        active_profile = default_profile_name
-
-# Create a variable to store the keybind mode
-add_keybind_mode = [False]
-
-if __name__ == "__main__":
-    icon = create_system_tray_icon()
-    load_profiles()
-
-    with Listener(on_release=on_key_release) as listener, MouseListener(on_click=capture_mouse_position) as mouse_listener:
-        autokeybind = tk.Tk()
-        autokeybind.title("XvG Auto Keybind")
-        autokeybind.wm_attributes("-topmost", 1)
-        autokeybind.geometry("275x430+100+100")
-        autokeybind.protocol("WM_DELETE_WINDOW", on_close)
-
+    # System Tray
+    def setup_tray_icon(self):
         if getattr(sys, 'frozen', False):
             icon_path = os.path.join(sys._MEIPASS, 'icon.ico')
         else:
             icon_path = 'icon.ico'
+        
+        image = Image.open(icon_path) if os.path.exists(icon_path) else Image.new('RGB', (64, 64), color='red')
+        
+        menu = (pystray.MenuItem('Exit', lambda: self.root.after(0, self.on_close)),)
+        self.tray_icon = pystray.Icon("AutoKeybind", image, "XvG AutoKeybind", menu)
+        
+        # Run in separate thread so it doesn't block TK
+        threading.Thread(target=self.tray_icon.run, daemon=True).start()
 
-        icon = Image.open(icon_path)
-        icon_photo = ImageTk.PhotoImage(icon)
-        autokeybind.tk.call('wm', 'iconphoto', autokeybind._w, icon_photo)
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = KeybindApp(root)
+    root.mainloop()
 
-        key_label = Label(autokeybind, text="Enter Key:")
-        key_label.pack()
-
-        key_entry = Entry(autokeybind)
-        key_entry.pack()
-
-        add_button = Button(autokeybind, text="Add Keybind", command=add_keybind)
-        add_button.pack()
-
-        reset_button = Button(autokeybind, text="Reset Keybinds", command=clear_keybinds)
-        reset_button.pack()
-
-        binds_button = Button(autokeybind, text="Binds", command=show_keybinds)
-        binds_button.pack()
-
-        profile_listbox = Listbox(autokeybind, selectmode=tk.SINGLE)
-        profile_listbox.pack()
-
-        add_profile_button = Button(autokeybind, text="Add Profile")
-        add_profile_button.pack(side='left')
-
-        remove_profile_button = Button(autokeybind, text="Remove Profile")
-        remove_profile_button.pack(side='left')
-
-        rename_profile_button = Button(autokeybind, text="Rename Profile")
-        rename_profile_button.pack(side='left')
-
-        for profile_name in profiles:
-            profile_listbox.insert(tk.END, profile_name)
-
-        def add_profile_action():
-            profile_name = simpledialog.askstring("Add Profile", "Enter Profile Name:")
-            if profile_name:
-                add_profile(profile_name)
-                profile_listbox.insert(tk.END, profile_name)
-
-        def remove_profile_action():
-            selected_index = profile_listbox.curselection()
-            if selected_index:
-                selected_index = int(selected_index[0])
-                profile_name = profile_listbox.get(selected_index)
-                response = messagebox.askyesno("Remove Profile", f"Are you sure you want to remove the profile '{profile_name}'?")
-                if response == tk.YES:
-                    remove_profile(profile_name)
-                    profile_listbox.delete(selected_index)
-
-        def rename_profile_action():
-            selected_index = profile_listbox.curselection()
-            if selected_index:
-                selected_index = int(selected_index[0])
-                profile_name = profile_listbox.get(selected_index)
-                new_name = simpledialog.askstring("Rename Profile", f"Enter new name for profile '{profile_name}':")
-                if new_name:
-                    rename_profile(profile_name, new_name)
-                    profile_listbox.delete(selected_index)
-                    profile_listbox.insert(selected_index, new_name)
-
-        def activate_profile(event):
-            global active_profile
-            selected_index = profile_listbox.curselection()
-            if selected_index:
-                selected_index = int(selected_index[0])
-                profile_name = profile_listbox.get(selected_index)
-                active_profile = profile_name
-
-        add_profile_button.config(command=add_profile_action)
-        remove_profile_button.config(command=remove_profile_action)
-        rename_profile_button.config(command=rename_profile_action)
-        profile_listbox.bind("<<ListboxSelect>>", activate_profile)
-
-        listener_thread = threading.Thread(target=listener.join)
-        listener_thread.start()
-
-        mouse_listener_thread = threading.Thread(target=mouse_listener.join)
-        mouse_listener_thread.start()
-
-        if not profiles:
-            load_profiles()
-            if not profiles:
-                default_profile_name = "Default"
-                add_profile(default_profile_name)
-                active_profile = default_profile_name
-
-        autokeybind.mainloop()
