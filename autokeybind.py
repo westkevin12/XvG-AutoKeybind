@@ -8,35 +8,35 @@ import pystray
 from PIL import Image, ImageTk
 import os
 import sys
-import pickle
+import json
 
 # Initialize profiles dictionary
 profiles = {}
 coords = []
 active_profile = None
 
-# Function to load profiles from a .dat file and set the active profile
+# Function to load profiles from a .json file and set the active profile
 def load_profiles():
     global active_profile, coords, profiles
     default_profile_name = "Default"
 
     # Check if the profiles file exists
-    if os.path.exists('profiles.dat'):
+    if os.path.exists('profiles.json'):
         try:
-            with open('profiles.dat', 'rb') as file:
-                profiles = pickle.load(file)
+            with open('profiles.json', 'r') as file:
+                profiles = json.load(file)
 
             if not active_profile:
                 active_profile = default_profile_name
 
-        except FileNotFoundError:
-            pass  # Failed to open the profiles file
+        except (FileNotFoundError, json.JSONDecodeError):
+            pass  # Failed to open or decode the profiles file
 
-# Function to save profiles to a .dat file
+# Function to save profiles to a .json file
 def save_profiles():
     global profiles
-    with open('profiles.dat', 'wb') as file:
-        pickle.dump(profiles, file)
+    with open('profiles.json', 'w') as file:
+        json.dump(profiles, file, indent=4)
 
 # Function to add a profile
 def add_profile(profile_name):
