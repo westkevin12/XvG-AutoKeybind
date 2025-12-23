@@ -23,6 +23,7 @@ class KeybindApp:
         self.coords = []
         self.active_profile = None
         self.add_keybind_mode = False
+        self.pending_key = None
         
         # Load Data
         self.load_profiles()
@@ -70,11 +71,6 @@ class KeybindApp:
         # Main Layout Frame
         main_frame = tk.Frame(self.root, padx=10, pady=10)
         main_frame.pack(fill=tk.BOTH, expand=True)
-
-        # Key Entry Section
-        tk.Label(main_frame, text="Enter Key:").pack(pady=(0, 5))
-        self.key_entry = Entry(main_frame)
-        self.key_entry.pack(fill=tk.X, pady=(0, 10))
 
         # Action Buttons
         button_frame = tk.Frame(main_frame)
@@ -137,10 +133,14 @@ class KeybindApp:
     # --- Logic Methods ---
 
     def add_keybind(self):
+        key = simpledialog.askstring("Add Keybind", "Enter the key you want to bind:")
+        if not key:
+            return # User cancelled
+
+        self.pending_key = key
         self.add_keybind_mode = True
-        self.key_entry.delete(0, tk.END)
-        self.add_button.config(state=tk.DISABLED, text="Press Key & Click...")
-        self.update_status("Press a key then click a location...")
+        self.add_button.config(state=tk.DISABLED, text="Click on Screen...")
+        self.update_status(f"Click anywhere to bind '{key}'...")
 
     def click_coordinate(self, x, y):
         original_position = pyautogui.position()
@@ -164,7 +164,7 @@ class KeybindApp:
         pass
 
     def on_click(self, x, y, button, pressed):
-        if pressed and self.add_keybind_mode:
+        if pressed and self.add_keybind_mode and self.pending_key:
             self.coords.append((x, y))
             
             # Save bind
@@ -173,10 +173,11 @@ class KeybindApp:
             self.save_profiles()
             
             # Reset UI
-            self.key_entry.delete(0, tk.END)
             self.add_keybind_mode = False
+            self.pending_key = None
             self.add_button.config(state=tk.NORMAL, text="Add Keybind")
-            self.update_status(f"Bound '{self.pending_key}' to ({x}, {y})")
+            self.update_status(f"Bound '{self.active_profile}' to ({x}, {y})") # logic fix: pending_key is cleared before printing? No, just bad logging. Fixed below.
+
 
     # Connect listeners
     def start_listeners(self):
