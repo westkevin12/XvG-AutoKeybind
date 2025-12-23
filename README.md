@@ -27,21 +27,23 @@ A simple Python GUI application that allows users to bind keys to specific mouse
 
 ## Usage
 
-1. Run the application:
-   ```bash
-   python main.py
-   ```
-   Or directly:
-   ```bash
-   python autokeybind.py
-   ```
-
-2. **Add a Profile**: Click "Add Profile" to create a new profile.
-3. **Add Keybind**:
-   - Enter the key you want to bind in the "Enter Key" field.
-   - Click "Add Keybind" (or press the button).
-   - Click anywhere on the screen to capture the coordinates.
-4. **Use Keybinds**: When the application is running, pressing the bound key will simulate a mouse click at the saved location.
+1.  **Launch the Application**: Run `autokeybind.py`.
+2.  **Manage Profiles**: 
+    - Create new profiles or use the "Default" one.
+    - Profiles are saved automatically to `profiles.json`.
+3.  **Add Keybinds**:
+    - Click **"Add Keybind"**.
+    - A dialog will appear:
+        - **Key**: Enter the key you want to bind (e.g., `a`, `F1`).
+        - **Action Type**: Select the behavior you want:
+            - **Click & Return**: Clicks the target and returns cursor to original position (Default).
+            - **Click & Stay**: Clicks the target and leaves the cursor there.
+            - **Double Click & Return**: Double-clicks the target and returns.
+            - **Drag & Return**: Moves to target, holds mouse down, returns to original pos, releases (simulates dragging item back).
+    - Click **"Set Location"**.
+    - Click anywhere on your screen to define the target coordinate.
+4.  **Test**: Press your bound key to execute the action.
+5.  **System Tray**: The app minimizes to the tray. Right-click the tray icon to exit.
 
 ## Contributing
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.

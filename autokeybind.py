@@ -1,14 +1,63 @@
 import pyautogui
 from pynput.keyboard import Listener
-from pynput.mouse import Listener as MouseListener
+from pynput.mouse import Listener as MouseListener, Button as MouseButton, Controller as MouseController
 import tkinter as tk
-from tkinter import Entry, Button, Label, Listbox, messagebox, simpledialog
+from tkinter import Entry, Button, Label, Listbox, messagebox, simpledialog, ttk
 import threading
 import pystray
 from PIL import Image, ImageTk
 import os
 import sys
 import json
+import time
+
+# Action Types Constant
+ACTION_CLICK_RETURN = "Click & Return"
+ACTION_CLICK_STAY = "Click & Stay"
+ACTION_DOUBLE_CLICK_RETURN = "Double Click & Return"
+ACTION_DRAG_RETURN = "Drag & Return"
+
+ACTION_TYPES = [
+    ACTION_CLICK_RETURN,
+    ACTION_CLICK_STAY,
+    ACTION_DOUBLE_CLICK_RETURN,
+    ACTION_DRAG_RETURN
+]
+
+class AddKeybindDialog(tk.Toplevel):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.title("Add Keybind")
+        self.geometry("300x200")
+        self.result = None
+        
+        tk.Label(self, text="Key:").pack(pady=(10, 0))
+        self.key_entry = Entry(self)
+        self.key_entry.pack(pady=(0, 10))
+        self.key_entry.focus_set()
+        
+        tk.Label(self, text="Action Type:").pack()
+        self.action_var = tk.StringVar(value=ACTION_CLICK_RETURN)
+        self.type_combo = ttk.Combobox(self, textvariable=self.action_var, values=ACTION_TYPES, state="readonly")
+        self.type_combo.pack(pady=(0, 15))
+        
+        btn_frame = tk.Frame(self)
+        btn_frame.pack(fill=tk.X, pady=10)
+        
+        Button(btn_frame, text="Set Location", command=self.on_ok).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=10)
+        Button(btn_frame, text="Cancel", command=self.destroy).pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=10)
+        
+        self.transient(parent)
+        self.grab_set()
+        self.wait_window(self)
+
+    def on_ok(self):
+        key = self.key_entry.get()
+        if not key:
+            messagebox.showwarning("Input Required", "Please enter a key.")
+            return
+        self.result = (key, self.action_var.get())
+        self.destroy()
 
 class KeybindApp:
     def __init__(self, root):
@@ -24,6 +73,10 @@ class KeybindApp:
         self.active_profile = None
         self.add_keybind_mode = False
         self.pending_key = None
+        self.pending_action_type = None
+        
+        # Mouse Controller for advanced actions
+        self.mouse = MouseController()
         
         # Load Data
         self.load_profiles()
@@ -133,19 +186,43 @@ class KeybindApp:
     # --- Logic Methods ---
 
     def add_keybind(self):
-        key = simpledialog.askstring("Add Keybind", "Enter the key you want to bind:")
-        if not key:
-            return # User cancelled
+        dialog = AddKeybindDialog(self.root)
+        if dialog.result:
+            key, action_type = dialog.result
+            self.pending_key = key
+            self.pending_action_type = action_type
+            
+            self.add_keybind_mode = True
+            self.add_button.config(state=tk.DISABLED, text="Click on Screen...")
+            self.update_status(f"Click anywhere to bind '{key}' ({action_type})...")
 
-        self.pending_key = key
-        self.add_keybind_mode = True
-        self.add_button.config(state=tk.DISABLED, text="Click on Screen...")
-        self.update_status(f"Click anywhere to bind '{key}'...")
-
-    def click_coordinate(self, x, y):
+    def perform_action(self, x, y, action_type):
         original_position = pyautogui.position()
-        pyautogui.click(x, y)
-        pyautogui.moveTo(original_position)
+        
+        if action_type == ACTION_CLICK_RETURN:
+            pyautogui.click(x, y)
+            pyautogui.moveTo(original_position)
+            
+        elif action_type == ACTION_CLICK_STAY:
+            pyautogui.click(x, y)
+            # Do not return
+            
+        elif action_type == ACTION_DOUBLE_CLICK_RETURN:
+            pyautogui.doubleClick(x, y)
+            pyautogui.moveTo(original_position)
+            
+        elif action_type == ACTION_DRAG_RETURN:
+            # Move to target, hold down, move back, release
+            pyautogui.moveTo(x, y)
+            pyautogui.mouseDown()
+            time.sleep(0.1) # Small delay for stability
+            pyautogui.moveTo(original_position)
+            pyautogui.mouseUp()
+            
+        else:
+            # Fallback
+            pyautogui.click(x, y)
+            pyautogui.moveTo(original_position)
 
     def on_key_release(self, key):
         try:
@@ -153,31 +230,41 @@ class KeybindApp:
             if not key_str: return
 
             if self.active_profile and key_str in self.profiles[self.active_profile]['keybinds']:
-                index = self.profiles[self.active_profile]['keybinds'][key_str]
-                if 0 <= index < len(self.coords):
-                    x, y = self.coords[index]
-                    self.click_coordinate(x, y)
+                bind_data = self.profiles[self.active_profile]['keybinds'][key_str]
+                
+                # Handle Legacy Format (List) vs New Format (Dict)
+                if isinstance(bind_data, list):
+                    coords = bind_data
+                    action_type = ACTION_CLICK_RETURN
+                else:
+                    coords = bind_data.get('coords')
+                    action_type = bind_data.get('type', ACTION_CLICK_RETURN)
+                
+                if coords and len(coords) == 2:
+                    self.perform_action(coords[0], coords[1], action_type)
+                    
         except Exception:
             pass 
 
-    def capture_mouse_position(self, x, y, button, pressed):
-        pass
-
     def on_click(self, x, y, button, pressed):
         if pressed and self.add_keybind_mode and self.pending_key:
-            self.coords.append((x, y))
+            # Data Structure: { "coords": [x, y], "type": "Action Name" }
+            bind_data = {
+                "coords": [x, y],
+                "type": self.pending_action_type
+            }
             
             # Save bind
             profile_data = self.profiles[self.active_profile]
-            profile_data['keybinds'][self.pending_key] = len(self.coords) - 1
+            profile_data['keybinds'][self.pending_key] = bind_data
             self.save_profiles()
             
             # Reset UI
             self.add_keybind_mode = False
             self.pending_key = None
+            self.pending_action_type = None
             self.add_button.config(state=tk.NORMAL, text="Add Keybind")
-            self.update_status(f"Bound '{self.active_profile}' to ({x}, {y})") # logic fix: pending_key is cleared before printing? No, just bad logging. Fixed below.
-
+            self.update_status(f"Bound '{self.active_profile}' to ({x}, {y})")
 
     # Connect listeners
     def start_listeners(self):
@@ -249,14 +336,22 @@ class KeybindApp:
     def show_keybinds(self):
         win = tk.Toplevel(self.root)
         win.title(f"Keybinds: {self.active_profile}")
-        win.geometry("300x300")
+        win.geometry("400x300")
         
         lb = Listbox(win)
         lb.pack(fill=tk.BOTH, expand=True)
 
         current_binds = self.profiles[self.active_profile]['keybinds']
         for key, val in current_binds.items():
-             lb.insert(tk.END, f"Key '{key}' -> {val}")
+             # Display format depends on version
+             if isinstance(val, list):
+                 display_text = f"Key '{key}' -> Coord: {val} (Legacy)"
+             else:
+                 coords = val.get('coords')
+                 action = val.get('type')
+                 display_text = f"Key '{key}' -> {action} @ {coords}"
+                 
+             lb.insert(tk.END, display_text)
 
     def on_close(self):
         self.keyboard_listener.stop()
@@ -284,4 +379,3 @@ if __name__ == "__main__":
     root = tk.Tk()
     app = KeybindApp(root)
     root.mainloop()
-
