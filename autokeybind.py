@@ -1,5 +1,5 @@
 import pyautogui
-from pynput.keyboard import Listener
+from pynput.keyboard import Listener, Key, KeyCode
 from pynput.mouse import Listener as MouseListener, Button as MouseButton, Controller as MouseController
 import tkinter as tk
 from tkinter import Entry, Button, Label, Listbox, messagebox, simpledialog, ttk
@@ -10,6 +10,7 @@ import os
 import sys
 import json
 import time
+from key_utils import get_key_name, get_key_combo_string
 
 # Action Types Constant
 ACTION_CLICK_RETURN = "Click & Return"
@@ -24,17 +25,27 @@ ACTION_TYPES = [
     ACTION_DRAG_RETURN
 ]
 
+
+
+
 class AddKeybindDialog(tk.Toplevel):
     def __init__(self, parent):
         super().__init__(parent)
         self.title("Add Keybind")
-        self.geometry("300x200")
+        self.geometry("300x250")
         self.result = None
         
-        tk.Label(self, text="Key:").pack(pady=(10, 0))
-        self.key_entry = Entry(self)
-        self.key_entry.pack(pady=(0, 10))
-        self.key_entry.focus_set()
+        self.pressed_keys = set()
+        self.listener = None
+        
+        tk.Label(self, text="Key Combination:", font=("Arial", 10)).pack(pady=(10, 5))
+        
+        self.key_display_var = tk.StringVar(value="None")
+        self.display_lbl = tk.Label(self, textvariable=self.key_display_var, font=("Arial", 14, "bold"), relief="sunken", bg="white", width=20)
+        self.display_lbl.pack(pady=(0, 10), ipady=10)
+        
+        self.record_btn = Button(self, text="Record Key", command=self.toggle_recording)
+        self.record_btn.pack(pady=(0, 15))
         
         tk.Label(self, text="Action Type:").pack()
         self.action_var = tk.StringVar(value=ACTION_CLICK_RETURN)
@@ -47,14 +58,66 @@ class AddKeybindDialog(tk.Toplevel):
         Button(btn_frame, text="Set Location", command=self.on_ok).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=10)
         Button(btn_frame, text="Cancel", command=self.destroy).pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=10)
         
+        self.protocol("WM_DELETE_WINDOW", self.on_close)
         self.transient(parent)
         self.grab_set()
         self.wait_window(self)
 
+    def toggle_recording(self):
+        if self.listener:
+            self.stop_recording()
+        else:
+            self.start_recording()
+
+    def start_recording(self):
+        self.pressed_keys.clear()
+        self.key_display_var.set("Press keys...")
+        self.record_btn.config(text="Stop Recording", bg="#ffcccc")
+        
+        self.listener = Listener(on_press=self.on_press, on_release=self.on_release)
+        self.listener.start()
+
+    def stop_recording(self):
+        if self.listener:
+            self.listener.stop()
+            self.listener = None
+        self.record_btn.config(text="Record Key", bg="SystemButtonFace")
+        
+    def on_press(self, key):
+        self.pressed_keys.add(key)
+        self.update_display()
+        
+    def on_release(self, key):
+        if key in self.pressed_keys:
+            # We don't remove from set immediately during recording to allow "Ctrl+A" logic 
+            # effectively logic captures the "Max" combo active.
+            # But simpler: Remove it to show current state?
+            # User wants to capture a "Stroke".
+            # Let's stop recording when ALL keys are released if at least one was pressed.
+            pass
+            
+        # Check if all keys are released to auto-stop? 
+        # Actually, let's just show what's currently held.
+        # But if user holds Ctrl, then presses A, then releases A, then releases Ctrl.
+        # Max combo was Ctrl+A.
+        # If I remove A on release, display goes back to Ctrl.
+        # If I stop on release?
+        pass
+        
+    def update_display(self):
+        combo = get_key_combo_string(self.pressed_keys)
+        if combo:
+            self.after(0, lambda: self.key_display_var.set(combo))
+
+    def on_close(self):
+        self.stop_recording()
+        self.destroy()
+
     def on_ok(self):
-        key = self.key_entry.get()
-        if not key:
-            messagebox.showwarning("Input Required", "Please enter a key.")
+        self.stop_recording()
+        key = self.key_display_var.get()
+        if not key or key == "None" or key == "Press keys...":
+            messagebox.showwarning("Input Required", "Please record a key combination.")
             return
         self.result = (key, self.action_var.get())
         self.destroy()
@@ -74,6 +137,8 @@ class KeybindApp:
         self.add_keybind_mode = False
         self.pending_key = None
         self.pending_action_type = None
+        
+        self.current_pressed_keys = set()
         
         # Mouse Controller for advanced actions
         self.mouse = MouseController()
@@ -224,51 +289,75 @@ class KeybindApp:
             pyautogui.click(x, y)
             pyautogui.moveTo(original_position)
 
-    def on_key_release(self, key):
-        try:
-            key_str = getattr(key, 'char', None) # Handle special keys gracefully
-            if not key_str: return
+    def on_key_press(self, key):
+        self.current_pressed_keys.add(key)
+        self.check_and_perform_action()
 
-            if self.active_profile and key_str in self.profiles[self.active_profile]['keybinds']:
-                bind_data = self.profiles[self.active_profile]['keybinds'][key_str]
-                
-                # Handle Legacy Format (List) vs New Format (Dict)
-                if isinstance(bind_data, list):
-                    coords = bind_data
-                    action_type = ACTION_CLICK_RETURN
-                else:
-                    coords = bind_data.get('coords')
-                    action_type = bind_data.get('type', ACTION_CLICK_RETURN)
-                
-                if coords and len(coords) == 2:
-                    self.perform_action(coords[0], coords[1], action_type)
-                    
-        except Exception:
-            pass 
+    def on_key_release(self, key):
+        if key in self.current_pressed_keys:
+            self.current_pressed_keys.remove(key)
+
+    def check_and_perform_action(self):
+        if not self.active_profile:
+            return
+
+        current_combo_str = get_key_combo_string(self.current_pressed_keys)
+        
+        # Check against binds
+        # We also need to check "Legacy" single keys just in case, but get_key_combo_string should handle single keys too (e.g. "A")
+        
+        binds = self.profiles[self.active_profile]['keybinds']
+        
+        if current_combo_str in binds:
+             self.execute_bind(binds[current_combo_str])
+             return
+        
+        # Fallback for legacy binds (often lowercase)
+        # Note: This might match "a" when "A" is pressed, which is usually desired for simple binds.
+        if current_combo_str.lower() in binds:
+             self.execute_bind(binds[current_combo_str.lower()])
+             return
+             
+        # Fallback check for single keys if combo string includes modifiers but bind is simple?
+        # No, strict matching is better.
+        
+    def execute_bind(self, bind_data):
+        if isinstance(bind_data, list):
+            coords = bind_data
+            action_type = ACTION_CLICK_RETURN
+        else:
+            coords = bind_data.get('coords')
+            action_type = bind_data.get('type', ACTION_CLICK_RETURN)
+        
+        if coords and len(coords) == 2:
+            self.perform_action(coords[0], coords[1], action_type)
 
     def on_click(self, x, y, button, pressed):
         if pressed and self.add_keybind_mode and self.pending_key:
-            # Data Structure: { "coords": [x, y], "type": "Action Name" }
-            bind_data = {
-                "coords": [x, y],
-                "type": self.pending_action_type
-            }
-            
-            # Save bind
-            profile_data = self.profiles[self.active_profile]
-            profile_data['keybinds'][self.pending_key] = bind_data
-            self.save_profiles()
-            
-            # Reset UI
-            self.add_keybind_mode = False
-            self.pending_key = None
-            self.pending_action_type = None
-            self.add_button.config(state=tk.NORMAL, text="Add Keybind")
-            self.update_status(f"Bound '{self.active_profile}' to ({x}, {y})")
+             self.root.after(0, lambda: self.handle_click_main_thread(x, y))
+
+    def handle_click_main_thread(self, x, y):
+        # Data Structure: { "coords": [x, y], "type": "Action Name" }
+        bind_data = {
+            "coords": [x, y],
+            "type": self.pending_action_type
+        }
+        
+        # Save bind
+        profile_data = self.profiles[self.active_profile]
+        profile_data['keybinds'][self.pending_key] = bind_data
+        self.save_profiles()
+        
+        # Reset UI
+        self.add_keybind_mode = False
+        self.pending_key = None
+        self.pending_action_type = None
+        self.add_button.config(state=tk.NORMAL, text="Add Keybind")
+        self.update_status(f"Bound '{self.active_profile}' to ({x}, {y})")
 
     # Connect listeners
     def start_listeners(self):
-        self.keyboard_listener = Listener(on_release=self.on_key_release)
+        self.keyboard_listener = Listener(on_press=self.on_key_press, on_release=self.on_key_release)
         self.mouse_listener = MouseListener(on_click=self.on_click)
         
         self.keyboard_listener.start()
