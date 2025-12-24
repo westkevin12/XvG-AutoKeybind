@@ -2,7 +2,9 @@ import pyautogui
 from pynput.keyboard import Listener, Key, KeyCode
 from pynput.mouse import Listener as MouseListener, Button as MouseButton, Controller as MouseController
 import tkinter as tk
-from tkinter import Entry, Button, Label, Listbox, messagebox, simpledialog, ttk
+from tkinter import Entry, Listbox, messagebox, simpledialog, ttk
+import tkinter as tk
+from tkinter.ttk import Button, Label, Frame, Style
 import threading
 import pystray
 from PIL import Image, ImageTk
@@ -28,39 +30,64 @@ ACTION_TYPES = [
 
 
 
-class AddKeybindDialog(tk.Toplevel):
-    def __init__(self, parent):
+
+class KeybindEditorDialog(tk.Toplevel):
+    def __init__(self, parent, edit_mode=False, current_key=None, current_data=None):
         super().__init__(parent)
-        self.title("Add Keybind")
-        self.geometry("300x250")
+        self.title("Edit Keybind" if edit_mode else "Add Keybind")
+        self.geometry("400x450")
+        self.resizable(False, True)
         self.result = None
+        self.edit_mode = edit_mode
         
         self.pressed_keys = set()
         self.listener = None
         
-        tk.Label(self, text="Key Combination:", font=("Arial", 10)).pack(pady=(10, 5))
+        # Main Frame
+        main_frame = Frame(self, padding=20)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # 1. Key Section
+        Label(main_frame, text="Key Combination:", style="Header.TLabel").grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 10))
         
-        self.key_display_var = tk.StringVar(value="None")
-        self.display_lbl = tk.Label(self, textvariable=self.key_display_var, font=("Arial", 14, "bold"), relief="sunken", bg="white", width=20)
-        self.display_lbl.pack(pady=(0, 10), ipady=10)
+        self.key_display_var = tk.StringVar(value=current_key if current_key else "None")
+        self.display_lbl = Label(main_frame, textvariable=self.key_display_var, font=("Segoe UI", 14, "bold"), relief="sunken", background="white", anchor="center")
+        self.display_lbl.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(0, 10), ipady=10)
         
-        self.record_btn = Button(self, text="Record Key", command=self.toggle_recording)
-        self.record_btn.pack(pady=(0, 15))
+        self.record_btn = Button(main_frame, text="Record Key", command=self.toggle_recording)
+        self.record_btn.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(0, 20))
         
-        tk.Label(self, text="Action Type:").pack()
-        self.action_var = tk.StringVar(value=ACTION_CLICK_RETURN)
-        self.type_combo = ttk.Combobox(self, textvariable=self.action_var, values=ACTION_TYPES, state="readonly")
-        self.type_combo.pack(pady=(0, 15))
+        # 2. Action Section
+        Label(main_frame, text="Action Type:", style="Header.TLabel").grid(row=3, column=0, columnspan=2, sticky="w", pady=(0, 10))
         
-        btn_frame = tk.Frame(self)
-        btn_frame.pack(fill=tk.X, pady=10)
+        initial_action = current_data.get('type', ACTION_CLICK_RETURN) if current_data else ACTION_CLICK_RETURN
+        self.action_var = tk.StringVar(value=initial_action)
+        self.type_combo = ttk.Combobox(main_frame, textvariable=self.action_var, values=ACTION_TYPES, state="readonly", font=("Segoe UI", 10))
+        self.type_combo.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(0, 20))
         
-        Button(btn_frame, text="Set Location", command=self.on_ok).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=10)
-        Button(btn_frame, text="Cancel", command=self.destroy).pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=10)
+        # 3. Location info
+        current_coords = current_data.get('coords') if current_data else None
+        self.coords_var = tk.StringVar(value=f"Location: {current_coords}" if current_coords else "Location: Not Set")
+        Label(main_frame, textvariable=self.coords_var, foreground="#666").grid(row=5, column=0, columnspan=2, sticky="w", pady=(0, 10))
+        
+        # 4. Update Location Checkbox (Only for Edit Mode)
+        self.update_loc_var = tk.BooleanVar(value=False)
+        if edit_mode:
+            ttk.Checkbutton(main_frame, text="Update/Reset Location (Click on Save)", variable=self.update_loc_var).grid(row=6, column=0, columnspan=2, sticky="w", pady=(0, 10))
+
+        # Bottom Buttons
+        btn_frame = Frame(self)
+        btn_frame.pack(fill=tk.X, padx=20, pady=20)
+        
+        ok_text = "Save Changes" if edit_mode else "Set Location & Save"
+        Button(btn_frame, text=ok_text, command=self.on_ok).pack(side=tk.RIGHT, padx=(10, 0))
+        Button(btn_frame, text="Cancel", command=self.destroy).pack(side=tk.RIGHT)
         
         self.protocol("WM_DELETE_WINDOW", self.on_close)
         self.transient(parent)
         self.grab_set()
+        
+        # If editing, we just wait. If adding, we wait.
         self.wait_window(self)
 
     def toggle_recording(self):
@@ -72,7 +99,7 @@ class AddKeybindDialog(tk.Toplevel):
     def start_recording(self):
         self.pressed_keys.clear()
         self.key_display_var.set("Press keys...")
-        self.record_btn.config(text="Stop Recording", bg="#ffcccc")
+        self.record_btn.configure(text="Stop Recording") # Style change handled by theme usually, or we can use state
         
         self.listener = Listener(on_press=self.on_press, on_release=self.on_release)
         self.listener.start()
@@ -81,7 +108,7 @@ class AddKeybindDialog(tk.Toplevel):
         if self.listener:
             self.listener.stop()
             self.listener = None
-        self.record_btn.config(text="Record Key", bg="SystemButtonFace")
+        self.record_btn.configure(text="Record Key")
         
     def on_press(self, key):
         self.pressed_keys.add(key)
@@ -89,25 +116,13 @@ class AddKeybindDialog(tk.Toplevel):
         
     def on_release(self, key):
         if key in self.pressed_keys:
-            # We don't remove from set immediately during recording to allow "Ctrl+A" logic 
-            # effectively logic captures the "Max" combo active.
-            # But simpler: Remove it to show current state?
-            # User wants to capture a "Stroke".
-            # Let's stop recording when ALL keys are released if at least one was pressed.
+            # Optional: Auto-stop on full release? For now, manual stop is safer for complex combos.
             pass
-            
-        # Check if all keys are released to auto-stop? 
-        # Actually, let's just show what's currently held.
-        # But if user holds Ctrl, then presses A, then releases A, then releases Ctrl.
-        # Max combo was Ctrl+A.
-        # If I remove A on release, display goes back to Ctrl.
-        # If I stop on release?
-        pass
         
     def update_display(self):
         combo = get_key_combo_string(self.pressed_keys)
         if combo:
-            self.after(0, lambda: self.key_display_var.set(combo))
+            self.display_lbl.after(0, lambda: self.key_display_var.set(combo))
 
     def on_close(self):
         self.stop_recording()
@@ -119,7 +134,18 @@ class AddKeybindDialog(tk.Toplevel):
         if not key or key == "None" or key == "Press keys...":
             messagebox.showwarning("Input Required", "Please record a key combination.")
             return
-        self.result = (key, self.action_var.get())
+            
+        # If we are editing and didn't change location, we keep old coords?
+        # The logic in KeybindApp handles setting location for new binds.
+        # For edits, if we want to change location, we might need a separate button?
+        # The current flow "Set Location & Save" implies re-setting location.
+        # Let's assume OK always returns data, and App handles what to do.
+        
+        # Return format: (Key, Action, ShouldUpdateLocation)
+        # For Add mode, ShouldUpdateLocation is implicitly True usually, but we can make it explicit.
+        should_update = self.update_loc_var.get() if self.edit_mode else True
+        
+        self.result = (key, self.action_var.get(), should_update)
         self.destroy()
 
 class KeybindApp:
@@ -127,6 +153,17 @@ class KeybindApp:
         self.root = root
         self.root.title("XvG Auto Keybind")
         self.root.wm_attributes("-topmost", 1)
+        
+        # Setup Styles
+        self.style = Style()
+        try:
+            self.style.theme_use('clam')
+        except:
+            pass # Fallback if clam not available
+        self.style.configure('TButton', font=('Segoe UI', 10), padding=5)
+        self.style.configure('TLabel', font=('Segoe UI', 10))
+        self.style.configure('Header.TLabel', font=('Segoe UI', 12, 'bold'))
+
         self.root.geometry("300x550")
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
@@ -135,8 +172,9 @@ class KeybindApp:
         self.coords = []
         self.active_profile = None
         self.add_keybind_mode = False
-        self.pending_key = None
         self.pending_action_type = None
+        self.mini_mode = False
+        self.normal_geometry = "300x550"
         
         self.current_pressed_keys = set()
         
@@ -187,42 +225,79 @@ class KeybindApp:
         self.set_window_icon()
 
         # Main Layout Frame
-        main_frame = tk.Frame(self.root, padx=10, pady=10)
-        main_frame.pack(fill=tk.BOTH, expand=True)
+        self.main_frame = Frame(self.root, padding=20)
+        self.main_frame.pack(fill=tk.BOTH, expand=True)
 
         # Action Buttons
-        button_frame = tk.Frame(main_frame)
-        button_frame.pack(fill=tk.X, pady=(0, 10))
+        button_frame = Frame(self.main_frame)
+        button_frame.pack(fill=tk.X, pady=(0, 20))
         
-        self.add_button = Button(button_frame, text="Add Keybind", command=self.add_keybind)
-        self.add_button.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+        # Big Add Button
+        self.add_button = ttk.Button(button_frame, text="Add Keybind", command=self.add_keybind)
+        self.add_button.pack(fill=tk.X, ipady=5)
         
-        self.reset_button = Button(button_frame, text="Reset Profile", command=self.clear_keybinds)
-        self.reset_button.pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=(5, 0))
-
-        self.view_binds_button = Button(main_frame, text="View/Edit Binds", command=self.show_keybinds)
-        self.view_binds_button.pack(fill=tk.X, pady=(0, 20))
+        self.view_binds_button = ttk.Button(self.main_frame, text="Manage Binds", command=self.show_keybinds)
+        self.view_binds_button.pack(fill=tk.X, pady=(0, 20), ipady=5)
 
         # Profile Section
-        tk.Label(main_frame, text="Profiles:").pack(anchor=tk.W)
-        self.profile_listbox = Listbox(main_frame, selectmode=tk.SINGLE, height=6)
-        self.profile_listbox.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        ttk.Label(self.main_frame, text="Active Profile:", style="Header.TLabel").pack(anchor=tk.W, pady=(0, 5))
+        
+        self.profile_frame = Frame(self.main_frame)
+        self.profile_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        
+        scrollbar = ttk.Scrollbar(self.profile_frame)
+        self.profile_listbox = Listbox(self.profile_frame, selectmode=tk.SINGLE, height=6, relief="flat", borderwidth=1, yscrollcommand=scrollbar.set)
+        scrollbar.config(command=self.profile_listbox.yview)
+        
+        self.profile_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
         self.profile_listbox.bind("<<ListboxSelect>>", self.activate_profile)
         self.refresh_profile_list()
 
         # Profile Buttons
-        profile_btn_frame = tk.Frame(main_frame)
-        profile_btn_frame.pack(fill=tk.X, pady=(0, 10))
+        profile_btn_frame = Frame(self.main_frame)
+        profile_btn_frame.pack(fill=tk.X, pady=(0, 20))
 
-        Button(profile_btn_frame, text="Add", command=self.add_profile_action).pack(side=tk.LEFT, fill=tk.X, expand=True)
-        Button(profile_btn_frame, text="Rename", command=self.rename_profile_action).pack(side=tk.LEFT, fill=tk.X, expand=True)
-        Button(profile_btn_frame, text="Remove", command=self.remove_profile_action).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        ttk.Button(profile_btn_frame, text="New", width=6, command=self.add_profile_action).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(profile_btn_frame, text="Rename", width=8, command=self.rename_profile_action).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(profile_btn_frame, text="Delete", width=8, command=self.remove_profile_action).pack(side=tk.LEFT)
+        
+        # Mini Mode / Reset
+        bottom_frame = Frame(self.main_frame)
+        bottom_frame.pack(side=tk.BOTTOM, fill=tk.X)
+        
+        ttk.Button(bottom_frame, text="Toggle Mini Mode", command=self.toggle_mini_mode).pack(side=tk.LEFT)
+        ttk.Button(bottom_frame, text="Clear All", command=self.clear_keybinds).pack(side=tk.RIGHT)
 
         # Status Bar
         self.status_var = tk.StringVar()
         self.status_var.set(f"Active Profile: {self.active_profile}")
-        status_label = Label(self.root, textvariable=self.status_var, bd=1, relief=tk.SUNKEN, anchor=tk.W, bg="#f0f0f0")
-        status_label.pack(side=tk.BOTTOM, fill=tk.X)
+        self.status_label = Label(self.root, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W)
+        self.status_label.pack(side=tk.BOTTOM, fill=tk.X)
+        
+    def toggle_mini_mode(self):
+        if not self.mini_mode:
+            # Switch to Mini
+            self.normal_geometry = self.root.geometry()
+            self.root.geometry("250x100")
+            self.main_frame.pack_forget()
+            
+            self.mini_frame = Frame(self.root, padding=10)
+            self.mini_frame.pack(fill=tk.BOTH, expand=True)
+            
+            ttk.Label(self.mini_frame, text=f"Active: {self.active_profile}", font=("Segoe UI", 12, "bold")).pack(pady=(5, 10))
+            ttk.Button(self.mini_frame, text="Expand to Normal View", command=self.toggle_mini_mode).pack(fill=tk.X)
+            
+            self.status_label.pack_forget() # Hide status bar in mini mode
+            self.mini_mode = True
+        else:
+            # Switch to Normal
+            self.mini_frame.destroy()
+            self.main_frame.pack(fill=tk.BOTH, expand=True)
+            self.status_label.pack(side=tk.BOTTOM, fill=tk.X)
+            self.root.geometry(self.normal_geometry)
+            self.mini_mode = False
 
     def set_window_icon(self):
         try:
@@ -251,13 +326,15 @@ class KeybindApp:
     # --- Logic Methods ---
 
     def add_keybind(self):
-        dialog = AddKeybindDialog(self.root)
+        # Pass nothing for new bind
+        dialog = KeybindEditorDialog(self.root)
         if dialog.result:
-            key, action_type = dialog.result
+            key, action_type, should_update_loc = dialog.result
             self.pending_key = key
             self.pending_action_type = action_type
             
             self.add_keybind_mode = True
+            # Update button to show state
             self.add_button.config(state=tk.DISABLED, text="Click on Screen...")
             self.update_status(f"Click anywhere to bind '{key}' ({action_type})...")
 
@@ -415,6 +492,13 @@ class KeybindApp:
         if selection:
             self.active_profile = selection
             self.update_status(f"Active Profile: {self.active_profile}")
+            # Update mini mode label if active
+            if self.mini_mode:
+                # Re-render or just update? Simple approach: toggle back and forth or update widget children.
+                # Since I used a hardcoded label in toggle_mini_mode, I should probably store it.
+                # Or just lazy refresh:
+                self.toggle_mini_mode() # To Normal
+                self.toggle_mini_mode() # Back to Mini (updates label)
 
     def clear_keybinds(self):
         if messagebox.askyesno("Confirm", f"Clear all keybinds in '{self.active_profile}'?"):
@@ -425,22 +509,108 @@ class KeybindApp:
     def show_keybinds(self):
         win = tk.Toplevel(self.root)
         win.title(f"Keybinds: {self.active_profile}")
-        win.geometry("400x300")
+        win.geometry("600x400")
         
-        lb = Listbox(win)
-        lb.pack(fill=tk.BOTH, expand=True)
+        # Frame for Treeview and Scrollbar
+        list_frame = Frame(win, padding=10)
+        list_frame.pack(fill=tk.BOTH, expand=True)
 
-        current_binds = self.profiles[self.active_profile]['keybinds']
-        for key, val in current_binds.items():
-             # Display format depends on version
-             if isinstance(val, list):
-                 display_text = f"Key '{key}' -> Coord: {val} (Legacy)"
-             else:
-                 coords = val.get('coords')
-                 action = val.get('type')
-                 display_text = f"Key '{key}' -> {action} @ {coords}"
-                 
-             lb.insert(tk.END, display_text)
+        columns = ("key", "action", "coords")
+        tree = ttk.Treeview(list_frame, columns=columns, show="headings", selectmode="browse")
+        
+        tree.heading("key", text="Key Combination")
+        tree.heading("action", text="Action Type")
+        tree.heading("coords", text="Coordinates")
+        
+        tree.column("key", width=150)
+        tree.column("action", width=150)
+        tree.column("coords", width=150)
+        
+        scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=tree.yview)
+        tree.configure(yscroll=scrollbar.set)
+        
+        tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        def populate_tree():
+            for item in tree.get_children():
+                tree.delete(item)
+                
+            current_binds = self.profiles[self.active_profile]['keybinds']
+            for key, val in current_binds.items():
+                if isinstance(val, list):
+                    action = "Legacy (Click & Return)"
+                    coords = str(val)
+                else:
+                    action = val.get('type')
+                    coords = str(val.get('coords'))
+                
+                tree.insert("", tk.END, iid=key, values=(key, action, coords))
+
+        populate_tree()
+
+        # Action Buttons
+        btn_frame = Frame(win, padding=10)
+        btn_frame.pack(fill=tk.X)
+
+        def on_edit():
+            selected = tree.selection()
+            if not selected: return
+            key = selected[0]
+            
+            # Get current data
+            binds = self.profiles[self.active_profile]['keybinds']
+            if key not in binds: return # Should not happen
+            
+            current_data = binds[key]
+            # Normalize data if legacy
+            if isinstance(current_data, list):
+                 current_data = {"coords": current_data, "type": ACTION_CLICK_RETURN}
+            
+            # Open Dialog in Edit Mode
+            dialog = KeybindEditorDialog(win, edit_mode=True, current_key=key, current_data=current_data)
+            
+            if dialog.result:
+                new_key, new_action, should_update_loc = dialog.result
+                
+                # If key changed, we need to remove old entry
+                if new_key != key:
+                    del self.profiles[self.active_profile]['keybinds'][key]
+                
+                # Decide next steps
+                if should_update_loc:
+                     # Enter "Click to Set" mode
+                     self.pending_key = new_key
+                     self.pending_action_type = new_action
+                     self.add_keybind_mode = True
+                     self.add_button.config(state=tk.DISABLED, text="Click on Screen...")
+                     self.update_status(f"Click anywhere to update '{new_key}'...")
+                     # Close this window so they can click
+                     win.destroy() 
+                else:
+                    # Just update data in place
+                    new_data = {
+                        "coords": current_data['coords'], # Keep existing coords
+                        "type": new_action
+                    }
+                    self.profiles[self.active_profile]['keybinds'][new_key] = new_data
+                    self.save_profiles()
+                    populate_tree()
+
+        def on_delete():
+            selected = tree.selection()
+            if not selected: return
+            key = selected[0]
+            if messagebox.askyesno("Confirm", f"Delete bind for '{key}'?", parent=win):
+                 del self.profiles[self.active_profile]['keybinds'][key]
+                 self.save_profiles()
+                 populate_tree()
+
+        ttk.Button(btn_frame, text="Edit Selected", command=on_edit).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="Delete Selected", command=on_delete).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="Close", command=win.destroy).pack(side=tk.RIGHT)
+
+        tree.bind("<Double-1>", lambda e: on_edit())
 
     def on_close(self):
         self.keyboard_listener.stop()
