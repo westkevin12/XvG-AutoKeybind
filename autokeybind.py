@@ -3,7 +3,7 @@ from pynput.keyboard import Listener, Key, KeyCode
 from pynput.mouse import Listener as MouseListener, Button as MouseButton, Controller as MouseController
 import tkinter as tk
 from tkinter import Entry, Listbox, messagebox, simpledialog, ttk
-import tkinter as tk
+
 from tkinter.ttk import Button, Label, Frame, Style
 import threading
 import pystray

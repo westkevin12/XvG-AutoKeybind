@@ -49,4 +49,4 @@ A simple Python GUI application that allows users to bind keys to specific mouse
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
 
 ## License
-[MIT](https://choosealicense.com/licenses/mit/)
+[GPLv3](https://mp.weixin.qq.com/s/7mQpP8k1T5x6fJ7pFf1g)
