@@ -12,6 +12,7 @@ import os
 import sys
 import json
 import time
+import random
 from key_utils import get_key_name, get_key_combo_string
 
 # Action Types Constant
@@ -19,26 +20,187 @@ ACTION_CLICK_RETURN = "Click & Return"
 ACTION_CLICK_STAY = "Click & Stay"
 ACTION_DOUBLE_CLICK_RETURN = "Double Click & Return"
 ACTION_DRAG_RETURN = "Drag & Return"
+ACTION_MACRO = "Macro / Sequence"
+ACTION_TEXT = "Auto Typer"
 
 ACTION_TYPES = [
     ACTION_CLICK_RETURN,
     ACTION_CLICK_STAY,
     ACTION_DOUBLE_CLICK_RETURN,
-    ACTION_DRAG_RETURN
+    ACTION_DRAG_RETURN,
+    ACTION_MACRO,
+    ACTION_TEXT
 ]
 
 
 
 
 
+class MacroEditorDialog(tk.Toplevel):
+    def __init__(self, parent, current_actions=None):
+        super().__init__(parent)
+        self.title("Macro Editor")
+        self.geometry("600x450")
+        self.result = None
+        
+        self.actions = current_actions if current_actions else []
+        
+        # Main Layout
+        self.main_frame = Frame(self, padding=10)
+        self.main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Action List (Left Side)
+        list_frame = Frame(self.main_frame)
+        list_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10))
+        
+        Label(list_frame, text="Action Sequence:", font=("Segoe UI", 10, "bold")).pack(anchor=tk.W)
+        
+        self.listbox = Listbox(list_frame, height=15, selectmode=tk.SINGLE)
+        self.listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        scrollbar = ttk.Scrollbar(list_frame, command=self.listbox.yview)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.listbox.config(yscrollcommand=scrollbar.set)
+        
+        self.refresh_list()
+        
+        # Buttons (Right Side)
+        btn_frame = Frame(self.main_frame)
+        btn_frame.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        Label(btn_frame, text="Add Actions:", font=("Segoe UI", 10, "bold")).pack(fill=tk.X, pady=(0, 5))
+        
+        ttk.Button(btn_frame, text="Add Delay", command=self.add_delay).pack(fill=tk.X, pady=2)
+        ttk.Button(btn_frame, text="Add Text", command=self.add_text).pack(fill=tk.X, pady=2)
+        ttk.Button(btn_frame, text="Add Click", command=self.add_click).pack(fill=tk.X, pady=2)
+        ttk.Button(btn_frame, text="Add Key", command=self.add_key).pack(fill=tk.X, pady=2)
+        
+        ttk.Separator(btn_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=10)
+        
+        ttk.Button(btn_frame, text="Move Up", command=self.move_up).pack(fill=tk.X, pady=2)
+        ttk.Button(btn_frame, text="Move Down", command=self.move_down).pack(fill=tk.X, pady=2)
+        ttk.Button(btn_frame, text="Delete", command=self.delete_action).pack(fill=tk.X, pady=2)
+        
+        # Bottom Buttons
+        bottom_frame = Frame(self, padding=10)
+        bottom_frame.pack(side=tk.BOTTOM, fill=tk.X)
+        
+        ttk.Button(bottom_frame, text="Save Macro", command=self.on_save).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(bottom_frame, text="Cancel", command=self.destroy).pack(side=tk.RIGHT)
+        
+        self.transient(parent)
+        self.grab_set()
+        self.wait_window(self)
+
+    def refresh_list(self):
+        self.listbox.delete(0, tk.END)
+        for i, action in enumerate(self.actions):
+            t = action.get('type')
+            desc = f"{i+1}. {t.upper()}"
+            if t == 'delay':
+                if action.get('mode') == 'random':
+                    desc += f" (Random: {action.get('min')}-{action.get('max')}s)"
+                else:
+                    desc += f" ({action.get('time')}s)"
+            elif t == 'text':
+                content = action.get('content', '')
+                short = (content[:15] + '..') if len(content) > 15 else content
+                desc += f" '{short}'"
+            elif t == 'click':
+                desc += f" {action.get('coords')}"
+            elif t == 'key':
+                desc += f" [{action.get('key')}]"
+            
+            self.listbox.insert(tk.END, desc)
+
+    def add_delay(self):
+        val = simpledialog.askfloat("Add Delay", "Enter delay in seconds:", parent=self, minvalue=0.01, maxvalue=60.0)
+        if val is not None:
+             self.actions.append({"type": "delay", "mode": "static", "time": val})
+             self.refresh_list()
+
+    def add_text(self):
+        t = simpledialog.askstring("Add Text", "Enter text to type:", parent=self)
+        if t:
+            self.actions.append({
+                "type": "text", 
+                "content": t, 
+                "delay_mode": "static", 
+                "delay_static": 0.05
+            })
+            self.refresh_list()
+
+    def add_click(self):
+        messagebox.showinfo("Add Click", "Click OK, then click anywhere on screen to capture coordinates.", parent=self)
+        self.withdraw()
+        
+        coords = []
+        click_detected = tk.BooleanVar(value=False)
+        
+        def on_c(x, y, button, pressed):
+            if pressed:
+                coords.append((x,y))
+                # Signal Tkinter loop
+                self.after(0, lambda: click_detected.set(True))
+                return False # Stop listener
+        
+        listener = MouseListener(on_click=on_c)
+        listener.start()
+        
+        self.wait_variable(click_detected)
+        
+        # Wait for listener to cleanup?
+        # listener.join() # It should be done since on_c returned False
+            
+        self.deiconify()
+        if coords:
+            self.actions.append({"type": "click", "coords": [coords[0][0], coords[0][1]], "button": "left"})
+            self.refresh_list()
+
+    def add_key(self):
+        k = simpledialog.askstring("Add Key", "Enter key name (e.g. enter, tab, a):", parent=self)
+        if k:
+            self.actions.append({"type": "key", "key": k})
+            self.refresh_list()
+
+    def move_up(self):
+        sel = self.listbox.curselection()
+        if not sel: return
+        idx = sel[0]
+        if idx > 0:
+            self.actions[idx], self.actions[idx-1] = self.actions[idx-1], self.actions[idx]
+            self.refresh_list()
+            self.listbox.selection_set(idx-1)
+
+    def move_down(self):
+        sel = self.listbox.curselection()
+        if not sel: return
+        idx = sel[0]
+        if idx < len(self.actions) - 1:
+            self.actions[idx], self.actions[idx+1] = self.actions[idx+1], self.actions[idx]
+            self.refresh_list()
+            self.listbox.selection_set(idx+1)
+
+    def delete_action(self):
+        sel = self.listbox.curselection()
+        if not sel: return
+        idx = sel[0]
+        del self.actions[idx]
+        self.refresh_list()
+
+    def on_save(self):
+        self.result = self.actions
+        self.destroy()
+
 class KeybindEditorDialog(tk.Toplevel):
     def __init__(self, parent, edit_mode=False, current_key=None, current_data=None):
         super().__init__(parent)
         self.title("Edit Keybind" if edit_mode else "Add Keybind")
-        self.geometry("400x450")
+        self.geometry("500x600")
         self.resizable(False, True)
         self.result = None
         self.edit_mode = edit_mode
+        self.current_data = current_data
         
         self.pressed_keys = set()
         self.listener = None
@@ -57,38 +219,149 @@ class KeybindEditorDialog(tk.Toplevel):
         self.record_btn = Button(main_frame, text="Record Key", command=self.toggle_recording)
         self.record_btn.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(0, 20))
         
-        # 2. Action Section
+        # 2. Action Type Selection
         Label(main_frame, text="Action Type:", style="Header.TLabel").grid(row=3, column=0, columnspan=2, sticky="w", pady=(0, 10))
         
         initial_action = current_data.get('type', ACTION_CLICK_RETURN) if current_data else ACTION_CLICK_RETURN
         self.action_var = tk.StringVar(value=initial_action)
         self.type_combo = ttk.Combobox(main_frame, textvariable=self.action_var, values=ACTION_TYPES, state="readonly", font=("Segoe UI", 10))
         self.type_combo.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(0, 20))
+        self.type_combo.bind("<<ComboboxSelected>>", self.on_type_changed)
         
-        # 3. Location info
+        # 3. Dynamic Content Frame
+        self.content_frame = Frame(main_frame)
+        self.content_frame.grid(row=5, column=0, columnspan=2, sticky="nsew")
+        
+        # Store widgets for dynamic show/hide
+        self.loc_widgets = []
+        self.text_widgets = []
+        
+        # -- Location Widgets (Default) --
         current_coords = current_data.get('coords') if current_data else None
         self.coords_var = tk.StringVar(value=f"Location: {current_coords}" if current_coords else "Location: Not Set")
-        Label(main_frame, textvariable=self.coords_var, foreground="#666").grid(row=5, column=0, columnspan=2, sticky="w", pady=(0, 10))
+        lbl = Label(self.content_frame, textvariable=self.coords_var, foreground="#666")
+        self.loc_widgets.append(lbl)
         
-        # 4. Update Location Checkbox (Only for Edit Mode)
         self.update_loc_var = tk.BooleanVar(value=False)
-        if edit_mode:
-            ttk.Checkbutton(main_frame, text="Update/Reset Location (Click on Save)", variable=self.update_loc_var).grid(row=6, column=0, columnspan=2, sticky="w", pady=(0, 10))
+        chk = ttk.Checkbutton(self.content_frame, text="Update/Reset Location (Click on Save)", variable=self.update_loc_var)
+        self.loc_widgets.append(chk)
+        
+        # -- Text / AutoTyper Widgets -- 
+        self.text_input = tk.Text(self.content_frame, height=5, width=40)
+        self.text_widgets.append(Label(self.content_frame, text="Text to Type:"))
+        self.text_widgets.append(self.text_input)
+        
+        # Delay Config
+        self.delay_mode_var = tk.StringVar(value="static")
+        delay_frame = Frame(self.content_frame)
+        self.text_widgets.append(delay_frame)
+        
+        ttk.Radiobutton(delay_frame, text="Static Delay", variable=self.delay_mode_var, value="static", command=self.update_delay_ui).pack(anchor=tk.W)
+        self.static_delay_entry = ttk.Entry(delay_frame, width=10)
+        self.static_delay_entry.insert(0, "0.05")
+        self.static_delay_entry.pack(anchor=tk.W, padx=20)
+        
+        ttk.Radiobutton(delay_frame, text="Random Delay", variable=self.delay_mode_var, value="random", command=self.update_delay_ui).pack(anchor=tk.W, pady=(10, 0))
+        rand_frame = Frame(delay_frame)
+        rand_frame.pack(anchor=tk.W, padx=20)
+        ttk.Label(rand_frame, text="Min:").pack(side=tk.LEFT)
+        self.rand_min_entry = ttk.Entry(rand_frame, width=8)
+        self.rand_min_entry.insert(0, "0.05")
+        self.rand_min_entry.pack(side=tk.LEFT, padx=5)
+        ttk.Label(rand_frame, text="Max:").pack(side=tk.LEFT)
+        self.rand_max_entry = ttk.Entry(rand_frame, width=8)
+        self.rand_max_entry.insert(0, "0.15")
+        self.rand_max_entry.pack(side=tk.LEFT, padx=5)
+        
+        # Initialize UI state
+        self.on_type_changed(None)
+        
+        # Populate exist data if editing text
+        self.macro_actions = []
+        if current_data and current_data.get('type') == ACTION_MACRO:
+            self.macro_actions = current_data.get('actions', [])
+
+        if edit_mode and initial_action == ACTION_TEXT and current_data:
+             self.text_input.insert("1.0", current_data.get('content', ''))
+             self.delay_mode_var.set(current_data.get('delay_mode', 'static'))
+             self.static_delay_entry.delete(0, tk.END); self.static_delay_entry.insert(0, str(current_data.get('delay_static', 0.05)))
+             self.rand_min_entry.delete(0, tk.END); self.rand_min_entry.insert(0, str(current_data.get('delay_min', 0.05)))
+             self.rand_max_entry.delete(0, tk.END); self.rand_max_entry.insert(0, str(current_data.get('delay_max', 0.15)))
+             self.update_delay_ui()
 
         # Bottom Buttons
         btn_frame = Frame(self)
         btn_frame.pack(fill=tk.X, padx=20, pady=20)
         
         ok_text = "Save Changes" if edit_mode else "Set Location & Save"
-        Button(btn_frame, text=ok_text, command=self.on_ok).pack(side=tk.RIGHT, padx=(10, 0))
+        # If text mode, label changes dynamically, but simple initial logic:
+        self.ok_btn = Button(btn_frame, text=ok_text, command=self.on_ok)
+        self.ok_btn.pack(side=tk.RIGHT, padx=(10, 0))
         Button(btn_frame, text="Cancel", command=self.destroy).pack(side=tk.RIGHT)
         
         self.protocol("WM_DELETE_WINDOW", self.on_close)
         self.transient(parent)
         self.grab_set()
         
-        # If editing, we just wait. If adding, we wait.
         self.wait_window(self)
+
+    def on_type_changed(self, event):
+        action = self.action_var.get()
+        
+        # Hide all first
+        for w in self.loc_widgets: w.grid_remove()
+        for w in self.text_widgets: w.pack_forget() if isinstance(w, Frame) else w.grid_remove() 
+        for child in self.content_frame.winfo_children():
+            child.grid_remove()
+            
+        if action == ACTION_TEXT:
+            # Show Text input
+            Label(self.content_frame, text="Text to Type:").grid(row=0, column=0, sticky="w", pady=(0, 5))
+            self.text_input.grid(row=1, column=0, sticky="ew", pady=(0, 10))
+            
+            # Delay Frame
+            Label(self.content_frame, text="Delay Settings:").grid(row=2, column=0, sticky="w")
+            self.text_widgets[2].grid(row=3, column=0, sticky="w", pady=(0, 10))
+            
+            self.ok_btn.configure(text="Save Text Action")
+            
+        elif action == ACTION_MACRO:
+             # Macro Editor Integration
+             Label(self.content_frame, text="Macro Sequence:").grid(row=0, column=0, sticky="w", pady=(0, 5))
+             
+             self.macro_summary_lbl = Label(self.content_frame, text=f"{len(self.macro_actions)} Actions Defined")
+             self.macro_summary_lbl.grid(row=1, column=0, sticky="w", pady=(0, 10))
+             
+             Button(self.content_frame, text="Open Macro Editor", command=self.open_macro_editor).grid(row=2, column=0, sticky="w")
+             
+             self.ok_btn.configure(text="Save Macro Bind")
+             
+        else:
+            # Mouse Action
+            self.loc_widgets[0].grid(row=0, column=0, sticky="w", pady=(0, 10))
+            
+            if self.edit_mode:
+                 self.loc_widgets[1].grid(row=1, column=0, sticky="w", pady=(0, 10))
+                 self.ok_btn.configure(text="Save Changes")
+            else:
+                 self.ok_btn.configure(text="Set Location & Save")
+
+    def open_macro_editor(self):
+        editor = MacroEditorDialog(self, self.macro_actions)
+        if editor.result is not None:
+            self.macro_actions = editor.result
+            self.macro_summary_lbl.config(text=f"{len(self.macro_actions)} Actions Defined")
+
+    def update_delay_ui(self):
+        mode = self.delay_mode_var.get()
+        if mode == 'static':
+            self.static_delay_entry.config(state='normal')
+            self.rand_min_entry.config(state='disabled')
+            self.rand_max_entry.config(state='disabled')
+        else:
+            self.static_delay_entry.config(state='disabled')
+            self.rand_min_entry.config(state='normal')
+            self.rand_max_entry.config(state='normal')
 
     def toggle_recording(self):
         if self.listener:
@@ -99,7 +372,7 @@ class KeybindEditorDialog(tk.Toplevel):
     def start_recording(self):
         self.pressed_keys.clear()
         self.key_display_var.set("Press keys...")
-        self.record_btn.configure(text="Stop Recording") # Style change handled by theme usually, or we can use state
+        self.record_btn.configure(text="Stop Recording") 
         
         self.listener = Listener(on_press=self.on_press, on_release=self.on_release)
         self.listener.start()
@@ -116,7 +389,6 @@ class KeybindEditorDialog(tk.Toplevel):
         
     def on_release(self, key):
         if key in self.pressed_keys:
-            # Optional: Auto-stop on full release? For now, manual stop is safer for complex combos.
             pass
         
     def update_display(self):
@@ -131,21 +403,44 @@ class KeybindEditorDialog(tk.Toplevel):
     def on_ok(self):
         self.stop_recording()
         key = self.key_display_var.get()
+        action_type = self.action_var.get()
+
         if not key or key == "None" or key == "Press keys...":
             messagebox.showwarning("Input Required", "Please record a key combination.")
             return
             
-        # If we are editing and didn't change location, we keep old coords?
-        # The logic in KeybindApp handles setting location for new binds.
-        # For edits, if we want to change location, we might need a separate button?
-        # The current flow "Set Location & Save" implies re-setting location.
-        # Let's assume OK always returns data, and App handles what to do.
-        
-        # Return format: (Key, Action, ShouldUpdateLocation)
-        # For Add mode, ShouldUpdateLocation is implicitly True usually, but we can make it explicit.
+        if action_type == ACTION_MACRO:
+            data = {
+                "type": ACTION_MACRO,
+                "actions": self.macro_actions
+            }
+            self.result = (key, data, False)
+            self.destroy()
+            return
+
+        if action_type == ACTION_TEXT:
+            # Build Text Data
+            content = self.text_input.get("1.0", tk.END).strip() # Remove trailing newline
+            if not content:
+                 messagebox.showwarning("Input Required", "Please enter text to type.")
+                 return
+
+            data = {
+                "type": ACTION_TEXT,
+                "content": content,
+                "delay_mode": self.delay_mode_var.get(),
+                "delay_static": self.static_delay_entry.get(),
+                "delay_min": self.rand_min_entry.get(),
+                "delay_max": self.rand_max_entry.get()
+            }
+            # For text, we don't need location update
+            self.result = (key, data, False) 
+            self.destroy()
+            return
+            
+        # Legacy/Mouse Logic
         should_update = self.update_loc_var.get() if self.edit_mode else True
-        
-        self.result = (key, self.action_var.get(), should_update)
+        self.result = (key, action_type, should_update)
         self.destroy()
 
 class KeybindApp:
@@ -333,14 +628,27 @@ class KeybindApp:
         # Pass nothing for new bind
         dialog = KeybindEditorDialog(self.root)
         if dialog.result:
-            key, action_type, should_update_loc = dialog.result
+            key, action_data, should_update_loc = dialog.result
+            
+            if not should_update_loc:
+                # Immediate Save (Text, Macro, or Edit without loc change)
+                if key in self.profiles[self.active_profile]['keybinds']:
+                     # This is 'Add' mode, so just overwrite.
+                     pass
+                # If we are here, we have data ready to save.
+                self.profiles[self.active_profile]['keybinds'][key] = action_data
+                self.save_profiles()
+                self.refresh_profile_list()
+                self.update_status(f"Bound '{key}'")
+                return
+
             self.pending_key = key
-            self.pending_action_type = action_type
+            self.pending_action_type = action_data
             
             self.add_keybind_mode = True
             # Update button to show state
             self.add_button.config(state=tk.DISABLED, text="Click on Screen...")
-            self.update_status(f"Click anywhere to bind '{key}' ({action_type})...")
+            self.update_status(f"Click anywhere to bind '{key}' ({action_data})...")
 
     def perform_action(self, x, y, action_type):
         original_position = pyautogui.position()
@@ -435,20 +743,91 @@ class KeybindApp:
             
         self.running_macro = True
         try:
+            # Detect Data Structure Type
             if isinstance(bind_data, list):
-                coords = bind_data
-                action_type = ACTION_CLICK_RETURN
-            else:
-                coords = bind_data.get('coords')
-                action_type = bind_data.get('type', ACTION_CLICK_RETURN)
+                 # Legacy: [x, y]
+                 self.perform_action(bind_data[0], bind_data[1], ACTION_CLICK_RETURN)
             
-            if coords and len(coords) == 2:
-                # Double check before performing action
-                if not self.kill_switch_active:
-                    self.perform_action(coords[0], coords[1], action_type)
+            else:
+                 # Dict Structure
+                 action_type = bind_data.get('type')
+                 
+                 if action_type == ACTION_MACRO:
+                     self.execute_macro(bind_data.get('actions', []))
+                     
+                 elif action_type == ACTION_TEXT:
+                     self.execute_text_action(bind_data)
+                     
+                 else:
+                     # Standard single action (Legacy Dict)
+                     coords = bind_data.get('coords')
+                     if coords and len(coords) == 2:
+                        if not self.kill_switch_active:
+                             self.perform_action(coords[0], coords[1], action_type or ACTION_CLICK_RETURN)
         finally:
             self.running_macro = False
 
+    def execute_macro(self, actions_list):
+        for action in actions_list:
+            if self.kill_switch_active:
+                return
+                
+            a_type = action.get('type')
+            
+            if a_type == 'delay':
+                # Pure Delay Action
+                d_mode = action.get('mode', 'static')
+                if d_mode == 'random':
+                     time.sleep(random.uniform(action.get('min', 0.1), action.get('max', 0.5)))
+                else:
+                     time.sleep(action.get('time', 0.1))
+                     
+            elif a_type == 'text':
+                self.execute_text_action(action)
+                
+            elif a_type == 'click':
+                # Simplified click action in macro
+                coords = action.get('coords')
+                btn = action.get('button', 'left')
+                if coords:
+                    pyautogui.click(coords[0], coords[1], button=btn)
+                    
+            elif a_type == 'key':
+                 k = action.get('key')
+                 if k:
+                     pyautogui.press(k)
+
+    def execute_text_action(self, action_data):
+        content = action_data.get('content', '')
+        delay_mode = action_data.get('delay_mode', 'static') # static, random, none
+        delay_min = float(action_data.get('delay_min', 0.05))
+        delay_max = float(action_data.get('delay_max', 0.15))
+        static_delay = float(action_data.get('delay_static', 0.05))
+        
+        for char in content:
+            if self.kill_switch_active:
+                return
+
+            # Type the character
+            try:
+                if char == '\n':
+                    pyautogui.press('enter')
+                else:
+                    pyautogui.write(char)
+            except Exception as e:
+                print(f"Error typing char '{char}': {e}")
+            
+            # Application Processing (Keep UI responsive-ish if on main thread)
+            # Since we are in a listener callback, we are blocking input! 
+            # This is why long macros are dangerous. Kill switch checks help.
+            
+            # Delay Logic
+            if delay_mode == 'static':
+                time.sleep(static_delay)
+            elif delay_mode == 'random':
+                time.sleep(random.uniform(delay_min, delay_max))
+            # 'none' = no sleep
+            
     def on_click(self, x, y, button, pressed):
         if pressed and self.add_keybind_mode and self.pending_key:
              self.root.after(0, lambda: self.handle_click_main_thread(x, y))
@@ -611,7 +990,7 @@ class KeybindApp:
             dialog = KeybindEditorDialog(win, edit_mode=True, current_key=key, current_data=current_data)
             
             if dialog.result:
-                new_key, new_action, should_update_loc = dialog.result
+                new_key, new_action_data, should_update_loc = dialog.result
                 
                 # If key changed, we need to remove old entry
                 if new_key != key:
@@ -621,7 +1000,7 @@ class KeybindApp:
                 if should_update_loc:
                      # Enter "Click to Set" mode
                      self.pending_key = new_key
-                     self.pending_action_type = new_action
+                     self.pending_action_type = new_action_data
                      self.add_keybind_mode = True
                      self.add_button.config(state=tk.DISABLED, text="Click on Screen...")
                      self.update_status(f"Click anywhere to update '{new_key}'...")
@@ -629,11 +1008,16 @@ class KeybindApp:
                      win.destroy() 
                 else:
                     # Just update data in place
-                    new_data = {
-                        "coords": current_data['coords'], # Keep existing coords
-                        "type": new_action
-                    }
-                    self.profiles[self.active_profile]['keybinds'][new_key] = new_data
+                    # If new_action_data is a dict (Text/Macro), use it directly
+                    if isinstance(new_action_data, dict):
+                        self.profiles[self.active_profile]['keybinds'][new_key] = new_action_data
+                    else:
+                        new_data = {
+                            "coords": current_data.get('coords'),
+                            "type": new_action_data
+                        }
+                        self.profiles[self.active_profile]['keybinds'][new_key] = new_data
+                        
                     self.save_profiles()
                     populate_tree()
 
