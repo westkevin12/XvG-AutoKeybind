@@ -1,19 +1,17 @@
 import pyautogui
-from pynput.keyboard import Listener, Key, KeyCode
-from pynput.mouse import Listener as MouseListener, Button as MouseButton, Controller as MouseController
+from pynput.keyboard import Key, Listener, Controller
+from pynput.mouse import Listener as MouseListener
 import tkinter as tk
-from tkinter import Entry, Listbox, messagebox, simpledialog, ttk
+from tkinter import ttk, messagebox, simpledialog, Scrollbar, Listbox, Frame, Label, Entry, Button, Toplevel
 
-from tkinter.ttk import Button, Label, Frame, Style
-import threading
-import pystray
-from PIL import Image, ImageTk
-import os
+from tkinter.ttk import Style
 import sys
+import os
 import json
 import time
 import random
-from key_utils import get_key_name, get_key_combo_string
+import threading
+from key_utils import get_key_combo_string
 
 # Action Types Constant
 ACTION_CLICK_RETURN = "Click & Return"
@@ -871,32 +869,37 @@ class KeybindApp:
             self.current_pressed_keys.remove(key)
 
     def check_and_perform_action(self):
-        if not self.active_profile or self.kill_switch_active:
-            return
+        try:
+            if not self.active_profile or self.kill_switch_active:
+                return
 
-        current_combo_str = get_key_combo_string(self.current_pressed_keys)
-        
-        # Check against binds
-        binds = self.profiles[self.active_profile]['keybinds']
-        
-        if current_combo_str in binds:
-             if self.running_macro:
-                 print("Macro already running, ignoring trigger.")
+            current_combo_str = get_key_combo_string(self.current_pressed_keys)
+            
+            # Check against binds
+            binds = self.profiles[self.active_profile]['keybinds']
+            
+            if current_combo_str in binds:
+                 if self.running_macro:
+                     print("Macro already running, ignoring trigger.")
+                     return
+                 
+                 self.running_macro = True
+                 # Run in separate thread to not block listener
+                 threading.Thread(target=self.execute_bind, args=(binds[current_combo_str],), daemon=True).start()
                  return
-             
-             self.running_macro = True
-             # Run in separate thread to not block listener
-             threading.Thread(target=self.execute_bind, args=(binds[current_combo_str],), daemon=True).start()
-             return
-        
-        # Fallback for legacy binds
-        if current_combo_str.lower() in binds:
-             if self.running_macro: return
-             
-             self.running_macro = True
-             # Run in separate thread to not block listener
-             threading.Thread(target=self.execute_bind, args=(binds[current_combo_str.lower()],), daemon=True).start()
-             return
+            
+            # Fallback for legacy binds
+            if current_combo_str.lower() in binds:
+                 if self.running_macro: return
+                 
+                 self.running_macro = True
+                 # Run in separate thread to not block listener
+                 threading.Thread(target=self.execute_bind, args=(binds[current_combo_str.lower()],), daemon=True).start()
+                 return
+        except Exception as e:
+            print(f"Error in listener callback: {e}")
+            import traceback
+            traceback.print_exc()
         
     def execute_bind(self, bind_data):
         if self.kill_switch_active:
