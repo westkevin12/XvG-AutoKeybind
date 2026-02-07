@@ -11,6 +11,28 @@ if [ -z "$VERSION" ]; then
     exit 1
 fi
 
+# Check if tag exists locally
+if git rev-parse "$VERSION" >/dev/null 2>&1; then
+    echo "Tag '$VERSION' already exists locally."
+    read -p "Do you want to (d)elete and recreate it, (u)se existing, or (a)bort? [d/u/a]: " choice
+    case "$choice" in 
+        d|D ) 
+            echo "Deleting local tag '$VERSION'..."
+            git tag -d "$VERSION"
+            ;;
+        u|U )
+            echo "Using existing tag..."
+            # GitHub CLI might still complain if not pushed, but maybe --target handles it?
+            # Or we just push it first?
+            git push origin "$VERSION" || echo "Warning: Failed to push tag. Continuing..."
+            ;;
+        * )
+            echo "Aborted."
+            exit 1
+            ;;
+    esac
+fi
+
 echo "Preparing to publish release $VERSION..."
 
 # Define Artifacts
