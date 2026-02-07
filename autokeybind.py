@@ -178,6 +178,10 @@ class KeybindApp:
         
         self.current_pressed_keys = set()
         
+        # Kill-Switch State
+        self.kill_switch_active = False
+        self.running_macro = False
+        
         # Mouse Controller for advanced actions
         self.mouse = MouseController()
         
@@ -362,12 +366,45 @@ class KeybindApp:
             pyautogui.mouseUp()
             
         else:
-            # Fallback
             pyautogui.click(x, y)
             pyautogui.moveTo(original_position)
 
+    # --- Kill-Switch Implementation ---
+    def emergency_stop(self):
+        if self.kill_switch_active:
+            return
+            
+        self.kill_switch_active = True
+        print("EMERGENCY STOP TRIGGERED")
+        
+        # Stop listeners immediately
+        if hasattr(self, 'keyboard_listener') and self.keyboard_listener:
+            self.keyboard_listener.stop()
+        if hasattr(self, 'mouse_listener') and self.mouse_listener:
+            self.mouse_listener.stop()
+            
+        # Notify user (using after to be thread-safe with tkinter)
+        self.root.after(0, lambda: messagebox.showerror("Emergency Stop", "Kill-Switch Activated! Application is closing."))
+        self.root.after(0, self.on_close)
+
     def on_key_press(self, key):
+        if self.kill_switch_active:
+            return
+
         self.current_pressed_keys.add(key)
+        
+        # Check Kill Switch (Ctrl+Alt+K)
+        # Note: get_key_combo_string sorts keys. 'Alt' comes before 'Ctrl'.
+        combo = get_key_combo_string(self.current_pressed_keys)
+        if combo == "Alt+Ctrl+K":
+            self.emergency_stop()
+            return
+            
+        # Check Esc for stopping active macros
+        if key == Key.esc and self.running_macro:
+            self.emergency_stop()
+            return
+
         self.check_and_perform_action()
 
     def on_key_release(self, key):
@@ -375,39 +412,42 @@ class KeybindApp:
             self.current_pressed_keys.remove(key)
 
     def check_and_perform_action(self):
-        if not self.active_profile:
+        if not self.active_profile or self.kill_switch_active:
             return
 
         current_combo_str = get_key_combo_string(self.current_pressed_keys)
         
         # Check against binds
-        # We also need to check "Legacy" single keys just in case, but get_key_combo_string should handle single keys too (e.g. "A")
-        
         binds = self.profiles[self.active_profile]['keybinds']
         
         if current_combo_str in binds:
              self.execute_bind(binds[current_combo_str])
              return
         
-        # Fallback for legacy binds (often lowercase)
-        # Note: This might match "a" when "A" is pressed, which is usually desired for simple binds.
+        # Fallback for legacy binds
         if current_combo_str.lower() in binds:
              self.execute_bind(binds[current_combo_str.lower()])
              return
-             
-        # Fallback check for single keys if combo string includes modifiers but bind is simple?
-        # No, strict matching is better.
         
     def execute_bind(self, bind_data):
-        if isinstance(bind_data, list):
-            coords = bind_data
-            action_type = ACTION_CLICK_RETURN
-        else:
-            coords = bind_data.get('coords')
-            action_type = bind_data.get('type', ACTION_CLICK_RETURN)
-        
-        if coords and len(coords) == 2:
-            self.perform_action(coords[0], coords[1], action_type)
+        if self.kill_switch_active:
+            return
+            
+        self.running_macro = True
+        try:
+            if isinstance(bind_data, list):
+                coords = bind_data
+                action_type = ACTION_CLICK_RETURN
+            else:
+                coords = bind_data.get('coords')
+                action_type = bind_data.get('type', ACTION_CLICK_RETURN)
+            
+            if coords and len(coords) == 2:
+                # Double check before performing action
+                if not self.kill_switch_active:
+                    self.perform_action(coords[0], coords[1], action_type)
+        finally:
+            self.running_macro = False
 
     def on_click(self, x, y, button, pressed):
         if pressed and self.add_keybind_mode and self.pending_key:
