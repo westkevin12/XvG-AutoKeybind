@@ -174,54 +174,67 @@ class MacroEditorDialog(tk.Toplevel):
         ttk.Button(btn_frame, text="Move Down", command=self.move_down).pack(fill=tk.X, pady=2)
         ttk.Button(btn_frame, text="Delete", command=self.delete_action).pack(fill=tk.X, pady=2)
         
-        # Playback Config Frame
-        playback_frame = Frame(self.main_frame, padding=5, relief="groove", borderwidth=1)
-        playback_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=10)
+        # Bottom Layout (Playback + Buttons)
+        bottom_frame = Frame(self, padding=10, relief="groove", borderwidth=1)
+        bottom_frame.pack(side=tk.BOTTOM, fill=tk.X)
         
-        Label(playback_frame, text="Playback Options:", font=("Segoe UI", 10, "bold")).pack(anchor=tk.W)
+        # Left Side: Playback
+        pb_frame = Frame(bottom_frame)
+        pb_frame.pack(side=tk.LEFT, fill=tk.X)
         
-        self.playback_mode_var = tk.StringVar(value=self.playback_config.get('mode', 'once'))
-        self.playback_val_var = tk.StringVar(value=str(self.playback_config.get('value', 1)))
-
-        modes_frame = Frame(playback_frame)
-        modes_frame.pack(fill=tk.X, pady=5)
+        Label(pb_frame, text="Playback Mode:").pack(side=tk.LEFT)
         
-        ttk.Radiobutton(modes_frame, text="Play Once", variable=self.playback_mode_var, value="once", command=self.update_playback_ui).pack(side=tk.LEFT, padx=5)
-        ttk.Radiobutton(modes_frame, text="Loop (Count)", variable=self.playback_mode_var, value="loop_count", command=self.update_playback_ui).pack(side=tk.LEFT, padx=5)
-        ttk.Radiobutton(modes_frame, text="Loop (Time)", variable=self.playback_mode_var, value="loop_time", command=self.update_playback_ui).pack(side=tk.LEFT, padx=5)
-        ttk.Radiobutton(modes_frame, text="Infinite Loop", variable=self.playback_mode_var, value="infinite", command=self.update_playback_ui).pack(side=tk.LEFT, padx=5)
+        modes = ["Play Once", "Loop (Count)", "Loop (Time)", "Infinite Loop"]
+        self.mode_map = {
+            "Play Once": "once",
+            "Loop (Count)": "loop_count", 
+            "Loop (Time)": "loop_time",
+            "Infinite Loop": "infinite"
+        }
+        # Reverse map for initial value
+        curr_mode = self.playback_config.get('mode', 'once')
+        init_mode_text = next((k for k, v in self.mode_map.items() if v == curr_mode), "Play Once")
         
-        self.val_frame = Frame(playback_frame)
-        self.val_frame.pack(fill=tk.X, pady=5)
+        self.playback_mode_var = tk.StringVar(value=init_mode_text)
+        self.mode_combo = ttk.Combobox(pb_frame, textvariable=self.playback_mode_var, values=modes, state="readonly", width=15)
+        self.mode_combo.pack(side=tk.LEFT, padx=5)
+        self.mode_combo.bind("<<ComboboxSelected>>", self.update_playback_ui)
+        
+        self.val_frame = Frame(pb_frame)
+        self.val_frame.pack(side=tk.LEFT, padx=10)
         
         self.val_label = Label(self.val_frame, text="Count:")
         self.val_label.pack(side=tk.LEFT)
-        self.val_entry = ttk.Entry(self.val_frame, textvariable=self.playback_val_var, width=10)
+        
+        self.playback_val_var = tk.StringVar(value=str(self.playback_config.get('value', 1)))
+        self.val_entry = ttk.Entry(self.val_frame, textvariable=self.playback_val_var, width=8)
         self.val_entry.pack(side=tk.LEFT, padx=5)
+
+        # Right Side: Buttons
+        btn_box = Frame(bottom_frame)
+        btn_box.pack(side=tk.RIGHT)
+        
+        ttk.Button(btn_box, text="Save Macro", command=self.on_save).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_box, text="Cancel", command=self.destroy).pack(side=tk.LEFT)
         
         self.update_playback_ui()
-
-        # Bottom Buttons
-        bottom_frame = Frame(self, padding=10)
-        bottom_frame.pack(side=tk.BOTTOM, fill=tk.X)
-        
-        ttk.Button(bottom_frame, text="Save Macro", command=self.on_save).pack(side=tk.RIGHT, padx=5)
-        ttk.Button(bottom_frame, text="Cancel", command=self.destroy).pack(side=tk.RIGHT)
         
         self.transient(parent)
         self.grab_set()
         self.wait_window(self)
 
-    def update_playback_ui(self):
-        mode = self.playback_mode_var.get()
+    def update_playback_ui(self, event=None):
+        text_mode = self.playback_mode_var.get()
+        mode = self.mode_map.get(text_mode, 'once')
+        
         if mode == 'once' or mode == 'infinite':
             self.val_frame.pack_forget()
         else:
-            self.val_frame.pack(fill=tk.X, pady=5, after=self.main_frame.winfo_children()[-2]) # Pack below modes
+            self.val_frame.pack(side=tk.LEFT, padx=10)
             if mode == 'loop_count':
-                self.val_label.config(text="Loop Count:")
+                self.val_label.config(text="Count:")
             else:
-                self.val_label.config(text="Duration (sec):")
+                self.val_label.config(text="Seconds:")
 
 
     def refresh_list(self):
@@ -317,7 +330,9 @@ class MacroEditorDialog(tk.Toplevel):
 
     def on_save(self):
         try:
-            mode = self.playback_mode_var.get()
+            text_mode = self.playback_mode_var.get()
+            mode = self.mode_map.get(text_mode, 'once')
+            
             val = float(self.playback_val_var.get()) if mode in ['loop_count', 'loop_time'] else 0
             
             playback_config = {
@@ -849,12 +864,14 @@ class KeybindApp:
         binds = self.profiles[self.active_profile]['keybinds']
         
         if current_combo_str in binds:
-             self.execute_bind(binds[current_combo_str])
+             # Run in separate thread to not block listener
+             threading.Thread(target=self.execute_bind, args=(binds[current_combo_str],), daemon=True).start()
              return
         
         # Fallback for legacy binds
         if current_combo_str.lower() in binds:
-             self.execute_bind(binds[current_combo_str.lower()])
+             # Run in separate thread to not block listener
+             threading.Thread(target=self.execute_bind, args=(binds[current_combo_str.lower()],), daemon=True).start()
              return
         
     def execute_bind(self, bind_data):
@@ -935,6 +952,9 @@ class KeybindApp:
 
     def execute_text_action(self, action_data):
         content = action_data.get('content', '')
+        # Handle literal \n if user typed it
+        content = content.replace('\\n', '\n')
+        
         delay_mode = action_data.get('delay_mode', 'static') # static, random, none
         delay_min = float(action_data.get('delay_min', 0.05))
         delay_max = float(action_data.get('delay_max', 0.15))
