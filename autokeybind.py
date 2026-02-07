@@ -29,11 +29,98 @@ ACTION_TYPES = [
     ACTION_DOUBLE_CLICK_RETURN,
     ACTION_DRAG_RETURN,
     ACTION_MACRO,
-    ACTION_TEXT
+    ACTION_MACRO
 ]
 
 
 
+
+
+class TextTypingDialog(tk.Toplevel):
+    def __init__(self, parent, current_data=None):
+        super().__init__(parent)
+        self.title("Add Text Action")
+        self.geometry("400x350")
+        self.wm_attributes("-topmost", 1)
+        self.resizable(False, False)
+        self.result = None
+        
+        # Main Frame
+        main_frame = Frame(self, padding=10)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Text Input
+        Label(main_frame, text="Text to Type:").pack(anchor=tk.W, pady=(0, 5))
+        self.text_input = tk.Text(main_frame, height=5, width=40)
+        self.text_input.pack(fill=tk.X, pady=(0, 10))
+        
+        if current_data:
+            self.text_input.insert("1.0", current_data.get('content', ''))
+            
+        # Delay Config
+        Label(main_frame, text="Delay Settings:").pack(anchor=tk.W, pady=(0, 5))
+        delay_frame = Frame(main_frame)
+        delay_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        self.delay_mode_var = tk.StringVar(value=current_data.get('delay_mode', 'static') if current_data else 'static')
+        
+        # Static Option
+        ttk.Radiobutton(delay_frame, text="Static Delay", variable=self.delay_mode_var, value="static", command=self.update_ui).pack(anchor=tk.W)
+        self.static_delay_entry = ttk.Entry(delay_frame, width=10)
+        self.static_delay_entry.insert(0, str(current_data.get('delay_static', 0.05)) if current_data else "0.05")
+        self.static_delay_entry.pack(anchor=tk.W, padx=20)
+        
+        # Random Option
+        ttk.Radiobutton(delay_frame, text="Random Delay", variable=self.delay_mode_var, value="random", command=self.update_ui).pack(anchor=tk.W, pady=(10, 0))
+        rand_frame = Frame(delay_frame)
+        rand_frame.pack(anchor=tk.W, padx=20)
+        ttk.Label(rand_frame, text="Min:").pack(side=tk.LEFT)
+        self.rand_min_entry = ttk.Entry(rand_frame, width=8)
+        self.rand_min_entry.insert(0, str(current_data.get('delay_min', 0.05)) if current_data else "0.05")
+        self.rand_min_entry.pack(side=tk.LEFT, padx=5)
+        ttk.Label(rand_frame, text="Max:").pack(side=tk.LEFT)
+        self.rand_max_entry = ttk.Entry(rand_frame, width=8)
+        self.rand_max_entry.insert(0, str(current_data.get('delay_max', 0.15)) if current_data else "0.15")
+        self.rand_max_entry.pack(side=tk.LEFT, padx=5)
+        
+        self.update_ui()
+        
+        # Buttons
+        btn_frame = Frame(self, padding=10)
+        btn_frame.pack(side=tk.BOTTOM, fill=tk.X)
+        ttk.Button(btn_frame, text="Save", command=self.on_save).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(btn_frame, text="Cancel", command=self.destroy).pack(side=tk.RIGHT)
+        
+        self.transient(parent)
+        self.grab_set()
+        self.wait_window(self)
+
+    def update_ui(self):
+        mode = self.delay_mode_var.get()
+        if mode == 'static':
+            self.static_delay_entry.config(state='normal')
+            self.rand_min_entry.config(state='disabled')
+            self.rand_max_entry.config(state='disabled')
+        else:
+            self.static_delay_entry.config(state='disabled')
+            self.rand_min_entry.config(state='normal')
+            self.rand_max_entry.config(state='normal')
+
+    def on_save(self):
+        content = self.text_input.get("1.0", tk.END).strip()
+        if not content:
+            messagebox.showwarning("Input Required", "Please enter text to type.")
+            return
+            
+        self.result = {
+            "type": "text",
+            "content": content,
+            "delay_mode": self.delay_mode_var.get(),
+            "delay_static": self.static_delay_entry.get(),
+            "delay_min": self.rand_min_entry.get(),
+            "delay_max": self.rand_max_entry.get()
+        }
+        self.destroy()
 
 
 class MacroEditorDialog(tk.Toplevel):
@@ -121,14 +208,9 @@ class MacroEditorDialog(tk.Toplevel):
              self.refresh_list()
 
     def add_text(self):
-        t = simpledialog.askstring("Add Text", "Enter text to type:", parent=self)
-        if t:
-            self.actions.append({
-                "type": "text", 
-                "content": t, 
-                "delay_mode": "static", 
-                "delay_static": 0.05
-            })
+        dialog = TextTypingDialog(self)
+        if dialog.result:
+            self.actions.append(dialog.result)
             self.refresh_list()
 
     def add_click(self):
@@ -315,18 +397,6 @@ class KeybindEditorDialog(tk.Toplevel):
         for child in self.content_frame.winfo_children():
             child.grid_remove()
             
-        if action == ACTION_TEXT:
-            # Show Text input
-            Label(self.content_frame, text="Text to Type:").grid(row=0, column=0, sticky="w", pady=(0, 5))
-            self.text_input.grid(row=1, column=0, sticky="ew", pady=(0, 10))
-            
-            # Delay Frame
-            Label(self.content_frame, text="Delay Settings:").grid(row=2, column=0, sticky="w")
-            self.text_widgets[2].grid(row=3, column=0, sticky="w", pady=(0, 10))
-            
-            self.ok_btn.configure(text="Save Text Action")
-            
-        elif action == ACTION_MACRO:
              # Macro Editor Integration
              Label(self.content_frame, text="Macro Sequence:").grid(row=0, column=0, sticky="w", pady=(0, 5))
              
@@ -419,26 +489,6 @@ class KeybindEditorDialog(tk.Toplevel):
             self.destroy()
             return
 
-        if action_type == ACTION_TEXT:
-            # Build Text Data
-            content = self.text_input.get("1.0", tk.END).strip() # Remove trailing newline
-            if not content:
-                 messagebox.showwarning("Input Required", "Please enter text to type.")
-                 return
-
-            data = {
-                "type": ACTION_TEXT,
-                "content": content,
-                "delay_mode": self.delay_mode_var.get(),
-                "delay_static": self.static_delay_entry.get(),
-                "delay_min": self.rand_min_entry.get(),
-                "delay_max": self.rand_max_entry.get()
-            }
-            # For text, we don't need location update
-            self.result = (key, data, False) 
-            self.destroy()
-            return
-            
         # Legacy/Mouse Logic
         should_update = self.update_loc_var.get() if self.edit_mode else True
         self.result = (key, action_type, should_update)
@@ -930,6 +980,7 @@ class KeybindApp:
         win = tk.Toplevel(self.root)
         win.title(f"Keybinds: {self.active_profile}")
         win.geometry("600x400")
+        win.wm_attributes("-topmost", 1) # Ensure visible over main window
         
         # Frame for Treeview and Scrollbar
         list_frame = Frame(win, padding=10)
