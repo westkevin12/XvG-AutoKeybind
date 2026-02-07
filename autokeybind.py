@@ -167,6 +167,33 @@ class MacroEditorDialog(tk.Toplevel):
         ttk.Button(btn_frame, text="Move Down", command=self.move_down).pack(fill=tk.X, pady=2)
         ttk.Button(btn_frame, text="Delete", command=self.delete_action).pack(fill=tk.X, pady=2)
         
+        # Playback Config Frame
+        playback_frame = Frame(self.main_frame, padding=5, relief="groove", borderwidth=1)
+        playback_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=10)
+        
+        Label(playback_frame, text="Playback Options:", font=("Segoe UI", 10, "bold")).pack(anchor=tk.W)
+        
+        self.playback_mode_var = tk.StringVar(value=current_actions.get('playback', {}).get('mode', 'once') if isinstance(current_actions, dict) else 'once')
+        self.playback_val_var = tk.StringVar(value=str(current_actions.get('playback', {}).get('value', 1)) if isinstance(current_actions, dict) else "1")
+
+        modes_frame = Frame(playback_frame)
+        modes_frame.pack(fill=tk.X, pady=5)
+        
+        ttk.Radiobutton(modes_frame, text="Play Once", variable=self.playback_mode_var, value="once", command=self.update_playback_ui).pack(side=tk.LEFT, padx=5)
+        ttk.Radiobutton(modes_frame, text="Loop (Count)", variable=self.playback_mode_var, value="loop_count", command=self.update_playback_ui).pack(side=tk.LEFT, padx=5)
+        ttk.Radiobutton(modes_frame, text="Loop (Time)", variable=self.playback_mode_var, value="loop_time", command=self.update_playback_ui).pack(side=tk.LEFT, padx=5)
+        ttk.Radiobutton(modes_frame, text="Infinite Loop", variable=self.playback_mode_var, value="infinite", command=self.update_playback_ui).pack(side=tk.LEFT, padx=5)
+        
+        self.val_frame = Frame(playback_frame)
+        self.val_frame.pack(fill=tk.X, pady=5)
+        
+        self.val_label = Label(self.val_frame, text="Count:")
+        self.val_label.pack(side=tk.LEFT)
+        self.val_entry = ttk.Entry(self.val_frame, textvariable=self.playback_val_var, width=10)
+        self.val_entry.pack(side=tk.LEFT, padx=5)
+        
+        self.update_playback_ui()
+
         # Bottom Buttons
         bottom_frame = Frame(self, padding=10)
         bottom_frame.pack(side=tk.BOTTOM, fill=tk.X)
@@ -177,6 +204,18 @@ class MacroEditorDialog(tk.Toplevel):
         self.transient(parent)
         self.grab_set()
         self.wait_window(self)
+
+    def update_playback_ui(self):
+        mode = self.playback_mode_var.get()
+        if mode == 'once' or mode == 'infinite':
+            self.val_frame.pack_forget()
+        else:
+            self.val_frame.pack(fill=tk.X, pady=5, after=self.main_frame.winfo_children()[-2]) # Pack below modes
+            if mode == 'loop_count':
+                self.val_label.config(text="Loop Count:")
+            else:
+                self.val_label.config(text="Duration (sec):")
+
 
     def refresh_list(self):
         self.listbox.delete(0, tk.END)
@@ -270,7 +309,23 @@ class MacroEditorDialog(tk.Toplevel):
         self.refresh_list()
 
     def on_save(self):
-        self.result = self.actions
+        try:
+            mode = self.playback_mode_var.get()
+            val = float(self.playback_val_var.get()) if mode in ['loop_count', 'loop_time'] else 0
+            
+            playback_config = {
+                "mode": mode,
+                "value": val
+            }
+        except ValueError:
+            messagebox.showerror("Invalid Input", "Please enter a valid number for Loop Count or Duration.")
+            return
+
+        # Return a dict structure for the macro
+        self.result = {
+            "actions": self.actions,
+            "playback": playback_config
+        }
         self.destroy()
 
 class KeybindEditorDialog(tk.Toplevel):
@@ -369,8 +424,10 @@ class KeybindEditorDialog(tk.Toplevel):
         
         # Populate exist data if editing text
         self.macro_actions = []
+        self.macro_playback = {}
         if current_data and current_data.get('type') == ACTION_MACRO:
             self.macro_actions = current_data.get('actions', [])
+            self.macro_playback = current_data.get('playback', {})
 
         if edit_mode and initial_action == ACTION_TEXT and current_data:
              self.text_input.insert("1.0", current_data.get('content', ''))
@@ -417,9 +474,13 @@ class KeybindEditorDialog(tk.Toplevel):
                  self.ok_btn.configure(text="Set Location & Save")
 
     def open_macro_editor(self):
-        editor = MacroEditorDialog(self, self.macro_actions)
+        editor = MacroEditorDialog(self, {
+            "actions": self.macro_actions,
+            "playback": self.macro_playback
+        })
         if editor.result is not None:
-            self.macro_actions = editor.result
+            self.macro_actions = editor.result['actions']
+            self.macro_playback = editor.result['playback']
             self.macro_summary_lbl.config(text=f"{len(self.macro_actions)} Actions Defined")
 
     def update_delay_ui(self):
@@ -482,11 +543,13 @@ class KeybindEditorDialog(tk.Toplevel):
         if action_type == ACTION_MACRO:
             data = {
                 "type": ACTION_MACRO,
-                "actions": self.macro_actions
+                "actions": self.macro_actions,
+                "playback": self.macro_playback
             }
             self.result = (key, data, False)
             self.destroy()
             return
+
 
         # Legacy/Mouse Logic
         should_update = self.update_loc_var.get() if self.edit_mode else True
@@ -803,7 +866,26 @@ class KeybindApp:
                  action_type = bind_data.get('type')
                  
                  if action_type == ACTION_MACRO:
-                     self.execute_macro(bind_data.get('actions', []))
+                    actions = bind_data.get('actions', [])
+                    playback = bind_data.get('playback', {})
+                    mode = playback.get('mode', 'once')
+                    val = playback.get('value', 0)
+                    
+                    if mode == 'once':
+                        self.execute_macro(actions)
+                    elif mode == 'loop_count':
+                        count = int(val)
+                        for _ in range(count):
+                            if self.kill_switch_active: break
+                            self.execute_macro(actions)
+                    elif mode == 'loop_time':
+                        end_time = time.time() + float(val)
+                        while time.time() < end_time:
+                            if self.kill_switch_active: break
+                            self.execute_macro(actions)
+                    elif mode == 'infinite':
+                        while not self.kill_switch_active:
+                             self.execute_macro(actions)
                      
                  else:
                      # Standard single action (Legacy Dict)
