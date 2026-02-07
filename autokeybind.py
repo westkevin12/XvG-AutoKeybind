@@ -1,6 +1,6 @@
 import pyautogui
 from pynput.keyboard import Key, Listener, Controller
-from pynput.mouse import Listener as MouseListener
+from pynput.mouse import Listener as MouseListener, Controller as MouseController
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog, Scrollbar, Listbox, Frame, Label, Entry, Button, Toplevel
 
