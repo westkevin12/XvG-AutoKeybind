@@ -138,50 +138,16 @@ class MacroEditorDialog(tk.Toplevel):
         else:
             self.actions = []
         
-        # Main Layout
-        self.main_frame = Frame(self, padding=10)
-        self.main_frame.pack(fill=tk.BOTH, expand=True)
-
-        # Name Field
-        name_frame = Frame(self.main_frame)
-        name_frame.pack(side=tk.TOP, fill=tk.X, pady=(0, 10))
-        Label(name_frame, text="Macro Name:").pack(side=tk.LEFT)
+        # --- Layout Construction ---
+        
+        # 1. Header: Name Field
+        header_frame = Frame(self, padding=10)
+        header_frame.pack(side=tk.TOP, fill=tk.X)
+        Label(header_frame, text="Macro Name:").pack(side=tk.LEFT)
         self.name_var = tk.StringVar(value=current_actions.get('name', 'My Macro') if isinstance(current_actions, dict) else "My Macro")
-        ttk.Entry(name_frame, textvariable=self.name_var).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        ttk.Entry(header_frame, textvariable=self.name_var).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
 
-        # Action List (Left Side)
-        list_frame = Frame(self.main_frame)
-        list_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10))
-        
-        Label(list_frame, text="Action Sequence:", font=("Segoe UI", 10, "bold")).pack(anchor=tk.W)
-        
-        self.listbox = Listbox(list_frame, height=15, selectmode=tk.SINGLE)
-        self.listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        
-        scrollbar = ttk.Scrollbar(list_frame, command=self.listbox.yview)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.listbox.config(yscrollcommand=scrollbar.set)
-        
-        self.refresh_list()
-        
-        # Buttons (Right Side)
-        btn_frame = Frame(self.main_frame)
-        btn_frame.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        Label(btn_frame, text="Add Actions:", font=("Segoe UI", 10, "bold")).pack(fill=tk.X, pady=(0, 5))
-        
-        ttk.Button(btn_frame, text="Add Delay", command=self.add_delay).pack(fill=tk.X, pady=2)
-        ttk.Button(btn_frame, text="Add Text", command=self.add_text).pack(fill=tk.X, pady=2)
-        ttk.Button(btn_frame, text="Add Click", command=self.add_click).pack(fill=tk.X, pady=2)
-        ttk.Button(btn_frame, text="Add Key", command=self.add_key).pack(fill=tk.X, pady=2)
-        
-        ttk.Separator(btn_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=10)
-        
-        ttk.Button(btn_frame, text="Move Up", command=self.move_up).pack(fill=tk.X, pady=2)
-        ttk.Button(btn_frame, text="Move Down", command=self.move_down).pack(fill=tk.X, pady=2)
-        ttk.Button(btn_frame, text="Delete", command=self.delete_action).pack(fill=tk.X, pady=2)
-        
-        # Bottom Layout (Playback + Buttons)
+        # 2. Footer: Playback & Buttons (Pack first to reserve space at bottom)
         bottom_frame = Frame(self, padding=10, relief="groove", borderwidth=1)
         bottom_frame.pack(side=tk.BOTTOM, fill=tk.X)
         
@@ -221,8 +187,44 @@ class MacroEditorDialog(tk.Toplevel):
         btn_box = Frame(bottom_frame)
         btn_box.pack(side=tk.RIGHT)
         
-        ttk.Button(btn_box, text="Save Macro", command=self.on_save).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_box, text="Save", command=self.on_save).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_box, text="Cancel", command=self.destroy).pack(side=tk.LEFT)
+
+        # 3. Middle: Actions List (Occupies remaining space)
+        self.main_frame = Frame(self, padding=10)
+        self.main_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+        # Action List (Left Side of Middle)
+        list_frame = Frame(self.main_frame)
+        list_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10))
+        
+        Label(list_frame, text="Action Sequence:", font=("Segoe UI", 10, "bold")).pack(anchor=tk.W)
+        
+        self.listbox = Listbox(list_frame, height=15, selectmode=tk.SINGLE)
+        self.listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        scrollbar = ttk.Scrollbar(list_frame, command=self.listbox.yview)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.listbox.config(yscrollcommand=scrollbar.set)
+        
+        self.refresh_list()
+        
+        # Buttons (Right Side of Middle)
+        btn_frame = Frame(self.main_frame)
+        btn_frame.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        Label(btn_frame, text="Add Actions:", font=("Segoe UI", 10, "bold")).pack(fill=tk.X, pady=(0, 5))
+        
+        ttk.Button(btn_frame, text="Add Delay", command=self.add_delay).pack(fill=tk.X, pady=2)
+        ttk.Button(btn_frame, text="Add Text", command=self.add_text).pack(fill=tk.X, pady=2)
+        ttk.Button(btn_frame, text="Add Click", command=self.add_click).pack(fill=tk.X, pady=2)
+        ttk.Button(btn_frame, text="Add Key", command=self.add_key).pack(fill=tk.X, pady=2)
+        
+        ttk.Separator(btn_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=10)
+        
+        ttk.Button(btn_frame, text="Move Up", command=self.move_up).pack(fill=tk.X, pady=2)
+        ttk.Button(btn_frame, text="Move Down", command=self.move_down).pack(fill=tk.X, pady=2)
+        ttk.Button(btn_frame, text="Delete", command=self.delete_action).pack(fill=tk.X, pady=2)
         
         self.update_playback_ui()
         
