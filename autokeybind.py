@@ -129,7 +129,14 @@ class MacroEditorDialog(tk.Toplevel):
         self.wm_attributes("-topmost", 1) # Ensure visible over main window
         self.result = None
         
-        self.actions = current_actions if current_actions else []
+        self.playback_config = {}
+        if isinstance(current_actions, dict) and 'actions' in current_actions:
+            self.actions = current_actions.get('actions', [])
+            self.playback_config = current_actions.get('playback', {})
+        elif isinstance(current_actions, list):
+            self.actions = current_actions
+        else:
+            self.actions = []
         
         # Main Layout
         self.main_frame = Frame(self, padding=10)
@@ -173,8 +180,8 @@ class MacroEditorDialog(tk.Toplevel):
         
         Label(playback_frame, text="Playback Options:", font=("Segoe UI", 10, "bold")).pack(anchor=tk.W)
         
-        self.playback_mode_var = tk.StringVar(value=current_actions.get('playback', {}).get('mode', 'once') if isinstance(current_actions, dict) else 'once')
-        self.playback_val_var = tk.StringVar(value=str(current_actions.get('playback', {}).get('value', 1)) if isinstance(current_actions, dict) else "1")
+        self.playback_mode_var = tk.StringVar(value=self.playback_config.get('mode', 'once'))
+        self.playback_val_var = tk.StringVar(value=str(self.playback_config.get('value', 1)))
 
         modes_frame = Frame(playback_frame)
         modes_frame.pack(fill=tk.X, pady=5)
