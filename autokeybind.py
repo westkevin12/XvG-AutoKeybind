@@ -142,6 +142,13 @@ class MacroEditorDialog(tk.Toplevel):
         self.main_frame = Frame(self, padding=10)
         self.main_frame.pack(fill=tk.BOTH, expand=True)
 
+        # Name Field
+        name_frame = Frame(self.main_frame)
+        name_frame.pack(side=tk.TOP, fill=tk.X, pady=(0, 10))
+        Label(name_frame, text="Macro Name:").pack(side=tk.LEFT)
+        self.name_var = tk.StringVar(value=current_actions.get('name', 'My Macro') if isinstance(current_actions, dict) else "My Macro")
+        ttk.Entry(name_frame, textvariable=self.name_var).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+
         # Action List (Left Side)
         list_frame = Frame(self.main_frame)
         list_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10))
@@ -345,6 +352,7 @@ class MacroEditorDialog(tk.Toplevel):
 
         # Return a dict structure for the macro
         self.result = {
+            "name": self.name_var.get(),
             "actions": self.actions,
             "playback": playback_config
         }
@@ -447,9 +455,11 @@ class KeybindEditorDialog(tk.Toplevel):
         # Populate exist data if editing text
         self.macro_actions = []
         self.macro_playback = {}
+        self.macro_name = "My Macro"
         if current_data and current_data.get('type') == ACTION_MACRO:
             self.macro_actions = current_data.get('actions', [])
             self.macro_playback = current_data.get('playback', {})
+            self.macro_name = current_data.get('name', "My Macro")
 
         if edit_mode and initial_action == ACTION_TEXT and current_data:
              self.text_input.insert("1.0", current_data.get('content', ''))
@@ -478,7 +488,7 @@ class KeybindEditorDialog(tk.Toplevel):
              # Macro Editor Integration
              Label(self.content_frame, text="Macro Sequence:").grid(row=0, column=0, sticky="w", pady=(0, 5))
              
-             self.macro_summary_lbl = Label(self.content_frame, text=f"{len(self.macro_actions)} Actions Defined")
+             self.macro_summary_lbl = Label(self.content_frame, text=f"{self.macro_name} ({len(self.macro_actions)} Actions)")
              self.macro_summary_lbl.grid(row=1, column=0, sticky="w", pady=(0, 10))
              
              Button(self.content_frame, text="Open Macro Editor", command=self.open_macro_editor).grid(row=2, column=0, sticky="w")
@@ -497,13 +507,15 @@ class KeybindEditorDialog(tk.Toplevel):
 
     def open_macro_editor(self):
         editor = MacroEditorDialog(self, {
+            "name": self.macro_name,
             "actions": self.macro_actions,
             "playback": self.macro_playback
         })
         if editor.result is not None:
+            self.macro_name = editor.result.get('name', 'My Macro')
             self.macro_actions = editor.result['actions']
             self.macro_playback = editor.result['playback']
-            self.macro_summary_lbl.config(text=f"{len(self.macro_actions)} Actions Defined")
+            self.macro_summary_lbl.config(text=f"{self.macro_name} ({len(self.macro_actions)} Actions)")
 
     def update_delay_ui(self):
         mode = self.delay_mode_var.get()
@@ -565,12 +577,14 @@ class KeybindEditorDialog(tk.Toplevel):
         if action_type == ACTION_MACRO:
             data = {
                 "type": ACTION_MACRO,
+                "name": self.macro_name,
                 "actions": self.macro_actions,
                 "playback": self.macro_playback
             }
             self.result = (key, data, False)
             self.destroy()
             return
+
 
 
         # Legacy/Mouse Logic
@@ -864,21 +878,29 @@ class KeybindApp:
         binds = self.profiles[self.active_profile]['keybinds']
         
         if current_combo_str in binds:
+             if self.running_macro:
+                 print("Macro already running, ignoring trigger.")
+                 return
+             
+             self.running_macro = True
              # Run in separate thread to not block listener
              threading.Thread(target=self.execute_bind, args=(binds[current_combo_str],), daemon=True).start()
              return
         
         # Fallback for legacy binds
         if current_combo_str.lower() in binds:
+             if self.running_macro: return
+             
+             self.running_macro = True
              # Run in separate thread to not block listener
              threading.Thread(target=self.execute_bind, args=(binds[current_combo_str.lower()],), daemon=True).start()
              return
         
     def execute_bind(self, bind_data):
         if self.kill_switch_active:
+            self.running_macro = False
             return
             
-        self.running_macro = True
         try:
             # Detect Data Structure Type
             if isinstance(bind_data, list):
