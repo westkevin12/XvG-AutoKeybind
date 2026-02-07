@@ -41,6 +41,7 @@ class MacroEditorDialog(tk.Toplevel):
         super().__init__(parent)
         self.title("Macro Editor")
         self.geometry("600x450")
+        self.wm_attributes("-topmost", 1) # Ensure visible over main window
         self.result = None
         
         self.actions = current_actions if current_actions else []
@@ -198,6 +199,7 @@ class KeybindEditorDialog(tk.Toplevel):
         self.title("Edit Keybind" if edit_mode else "Add Keybind")
         self.geometry("500x600")
         self.resizable(False, True)
+        self.wm_attributes("-topmost", 1) # Ensure visible over main window
         self.result = None
         self.edit_mode = edit_mode
         self.current_data = current_data
@@ -205,9 +207,18 @@ class KeybindEditorDialog(tk.Toplevel):
         self.pressed_keys = set()
         self.listener = None
         
-        # Main Frame
+        # Bottom Buttons (Pack first to ensure visibility)
+        btn_frame = Frame(self)
+        btn_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=20, pady=20)
+        
+        ok_text = "Save Changes" if edit_mode else "Set Location & Save"
+        self.ok_btn = Button(btn_frame, text=ok_text, command=self.on_ok)
+        self.ok_btn.pack(side=tk.RIGHT, padx=(10, 0))
+        Button(btn_frame, text="Cancel", command=self.destroy).pack(side=tk.RIGHT)
+
+        # Main Frame (Occupies remaining space)
         main_frame = Frame(self, padding=20)
-        main_frame.pack(fill=tk.BOTH, expand=True)
+        main_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
         # 1. Key Section
         Label(main_frame, text="Key Combination:", style="Header.TLabel").grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 10))
@@ -288,16 +299,6 @@ class KeybindEditorDialog(tk.Toplevel):
              self.rand_min_entry.delete(0, tk.END); self.rand_min_entry.insert(0, str(current_data.get('delay_min', 0.05)))
              self.rand_max_entry.delete(0, tk.END); self.rand_max_entry.insert(0, str(current_data.get('delay_max', 0.15)))
              self.update_delay_ui()
-
-        # Bottom Buttons
-        btn_frame = Frame(self)
-        btn_frame.pack(fill=tk.X, padx=20, pady=20)
-        
-        ok_text = "Save Changes" if edit_mode else "Set Location & Save"
-        # If text mode, label changes dynamically, but simple initial logic:
-        self.ok_btn = Button(btn_frame, text=ok_text, command=self.on_ok)
-        self.ok_btn.pack(side=tk.RIGHT, padx=(10, 0))
-        Button(btn_frame, text="Cancel", command=self.destroy).pack(side=tk.RIGHT)
         
         self.protocol("WM_DELETE_WINDOW", self.on_close)
         self.transient(parent)
