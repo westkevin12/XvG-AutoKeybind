@@ -21,14 +21,12 @@ ACTION_CLICK_STAY = "Click & Stay"
 ACTION_DOUBLE_CLICK_RETURN = "Double Click & Return"
 ACTION_DRAG_RETURN = "Drag & Return"
 ACTION_MACRO = "Macro / Sequence"
-ACTION_TEXT = "Auto Typer"
 
 ACTION_TYPES = [
     ACTION_CLICK_RETURN,
     ACTION_CLICK_STAY,
     ACTION_DOUBLE_CLICK_RETURN,
     ACTION_DRAG_RETURN,
-    ACTION_MACRO,
     ACTION_MACRO
 ]
 
@@ -397,6 +395,7 @@ class KeybindEditorDialog(tk.Toplevel):
         for child in self.content_frame.winfo_children():
             child.grid_remove()
             
+        if action == ACTION_MACRO:
              # Macro Editor Integration
              Label(self.content_frame, text="Macro Sequence:").grid(row=0, column=0, sticky="w", pady=(0, 5))
              
@@ -805,9 +804,6 @@ class KeybindApp:
                  
                  if action_type == ACTION_MACRO:
                      self.execute_macro(bind_data.get('actions', []))
-                     
-                 elif action_type == ACTION_TEXT:
-                     self.execute_text_action(bind_data)
                      
                  else:
                      # Standard single action (Legacy Dict)
