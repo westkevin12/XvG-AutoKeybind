@@ -40,7 +40,7 @@ class MacroManagerDialog(tk.Toplevel):
         super().__init__(parent)
         self.app = app
         self.title("Macro Manager")
-        self.geometry("500x400")
+        self.geometry("500x500")
         self.wm_attributes("-topmost", 1)
         
         # Layout
@@ -227,7 +227,7 @@ class MacroEditorDialog(tk.Toplevel):
     def __init__(self, parent, current_actions=None):
         super().__init__(parent)
         self.title("Macro Editor")
-        self.geometry("600x450")
+        self.geometry("700x600")
         self.wm_attributes("-topmost", 1) # Ensure visible over main window
         self.result = None
         
@@ -640,6 +640,12 @@ class KeybindEditorDialog(tk.Toplevel):
             
             # Update Combo
             self.on_type_changed(None)
+            
+            # Force refresh of values
+            macros = self.master.profiles[self.master.active_profile].get('macros', {})
+            macro_names = sorted(macros.keys())
+            self.macro_combo['values'] = macro_names
+            
             self.macro_select_var.set(name)
 
     def edit_selected_macro(self):
@@ -660,6 +666,12 @@ class KeybindEditorDialog(tk.Toplevel):
             self.master.save_profiles()
             
             self.on_type_changed(None)
+            
+            # Force refresh of values
+            macros = self.master.profiles[self.master.active_profile].get('macros', {})
+            macro_names = sorted(macros.keys())
+            self.macro_combo['values'] = macro_names
+            
             self.macro_select_var.set(new_name)
 
     def update_delay_ui(self):
