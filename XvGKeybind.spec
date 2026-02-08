@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['main.py'],
+    ['main.py', 'autokeybind.py', 'key_utils.py'],
     pathex=[],
     binaries=[],
     datas=[('icon.ico', '.')],
@@ -25,10 +25,10 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=True,
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
