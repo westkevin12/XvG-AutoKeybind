@@ -463,8 +463,9 @@ class MacroEditorDialog(tk.Toplevel):
         self.destroy()
 
 class KeybindEditorDialog(tk.Toplevel):
-    def __init__(self, parent, edit_mode=False, current_key=None, current_data=None):
+    def __init__(self, parent, app, edit_mode=False, current_key=None, current_data=None):
         super().__init__(parent)
+        self.app = app
         self.title("Edit Keybind" if edit_mode else "Add Keybind")
         self.geometry("500x600")
         self.resizable(False, True)
@@ -592,7 +593,7 @@ class KeybindEditorDialog(tk.Toplevel):
              # Macro Selection UI
              Label(self.content_frame, text="Select Macro:", style="Header.TLabel").grid(row=0, column=0, sticky="w", pady=(0, 5))
              
-             macros = self.master.profiles[self.master.active_profile].get('macros', {})
+             macros = self.app.profiles[self.app.active_profile].get('macros', {})
              macro_names = sorted(macros.keys())
              
              self.macro_select_var = tk.StringVar()
@@ -631,18 +632,18 @@ class KeybindEditorDialog(tk.Toplevel):
             name = editor.result.get('name')
             if not name: return
             
-            # Save to library (via App reference in master)
-            if 'macros' not in self.master.profiles[self.master.active_profile]:
-                self.master.profiles[self.master.active_profile]['macros'] = {}
+            # Save to library (via App reference)
+            if 'macros' not in self.app.profiles[self.app.active_profile]:
+                self.app.profiles[self.app.active_profile]['macros'] = {}
                 
-            self.master.profiles[self.master.active_profile]['macros'][name] = editor.result
-            self.master.save_profiles()
+            self.app.profiles[self.app.active_profile]['macros'][name] = editor.result
+            self.app.save_profiles()
             
             # Update Combo
             self.on_type_changed(None)
             
             # Force refresh of values
-            macros = self.master.profiles[self.master.active_profile].get('macros', {})
+            macros = self.app.profiles[self.app.active_profile].get('macros', {})
             macro_names = sorted(macros.keys())
             self.macro_combo['values'] = macro_names
             
@@ -652,7 +653,7 @@ class KeybindEditorDialog(tk.Toplevel):
         name = self.macro_select_var.get()
         if not name: return
         
-        macros = self.master.profiles[self.master.active_profile].get('macros', {})
+        macros = self.app.profiles[self.app.active_profile].get('macros', {})
         data = macros.get(name)
         
         editor = MacroEditorDialog(self, data)
@@ -663,12 +664,12 @@ class KeybindEditorDialog(tk.Toplevel):
                 del macros[name]
             
             macros[new_name] = editor.result
-            self.master.save_profiles()
+            self.app.save_profiles()
             
             self.on_type_changed(None)
             
             # Force refresh of values
-            macros = self.master.profiles[self.master.active_profile].get('macros', {})
+            macros = self.app.profiles[self.app.active_profile].get('macros', {})
             macro_names = sorted(macros.keys())
             self.macro_combo['values'] = macro_names
             
@@ -939,7 +940,7 @@ class KeybindApp:
 
     def add_keybind(self):
         # Pass nothing for new bind
-        dialog = KeybindEditorDialog(self.root)
+        dialog = KeybindEditorDialog(self.root, self)
         if dialog.result:
             key, action_data, should_update_loc = dialog.result
             
@@ -1349,7 +1350,7 @@ class KeybindApp:
                  current_data = {"coords": current_data, "type": ACTION_CLICK_RETURN}
             
             # Open Dialog in Edit Mode
-            dialog = KeybindEditorDialog(win, edit_mode=True, current_key=key, current_data=current_data)
+            dialog = KeybindEditorDialog(win, self.app, edit_mode=True, current_key=key, current_data=current_data)
             
             if dialog.result:
                 new_key, new_action_data, should_update_loc = dialog.result
