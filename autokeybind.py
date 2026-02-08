@@ -8,8 +8,11 @@ import sys
 import os
 import json
 import time
+import time
 import random
 import threading
+import pystray
+from PIL import Image, ImageTk
 from key_utils import get_key_combo_string
 
 # Action Types Constant
@@ -18,6 +21,7 @@ ACTION_CLICK_STAY = "Click & Stay"
 ACTION_DOUBLE_CLICK_RETURN = "Double Click & Return"
 ACTION_DRAG_RETURN = "Drag & Return"
 ACTION_MACRO = "Macro / Sequence"
+ACTION_TEXT = "Text / Type"
 
 ACTION_TYPES = [
     ACTION_CLICK_RETURN,
