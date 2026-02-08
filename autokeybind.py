@@ -35,6 +35,107 @@ ACTION_TYPES = [
 
 
 
+class MacroManagerDialog(tk.Toplevel):
+    def __init__(self, parent, app):
+        super().__init__(parent)
+        self.app = app
+        self.title("Macro Manager")
+        self.geometry("500x400")
+        self.wm_attributes("-topmost", 1)
+        
+        # Layout
+        self.main_frame = Frame(self, padding=10)
+        self.main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # List
+        Label(self.main_frame, text="Macro Library:", style="Header.TLabel").pack(anchor=tk.W)
+        
+        list_frame = Frame(self.main_frame)
+        list_frame.pack(fill=tk.BOTH, expand=True, pady=(5, 10))
+        
+        scrollbar = Scrollbar(list_frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        self.listbox = Listbox(list_frame, height=15, selectmode=tk.SINGLE, yscrollcommand=scrollbar.set)
+        self.listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=self.listbox.yview)
+        
+        # Buttons
+        btn_frame = Frame(self.main_frame)
+        btn_frame.pack(fill=tk.X)
+        
+        ttk.Button(btn_frame, text="Create New", command=self.create_macro).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="Edit", command=self.edit_macro).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="Duplicate", command=self.duplicate_macro).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="Delete", command=self.delete_macro).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="Close", command=self.destroy).pack(side=tk.RIGHT)
+        
+        self.refresh_list()
+
+    def refresh_list(self):
+        self.listbox.delete(0, tk.END)
+        macros = self.app.profiles[self.app.active_profile].get('macros', {})
+        for name in sorted(macros.keys()):
+            self.listbox.insert(tk.END, name)
+
+    def create_macro(self):
+        editor = MacroEditorDialog(self, {"name": "New Macro"})
+        if editor.result:
+            name = editor.result.get('name')
+            if not name: return
+            
+            # Save to library
+            if 'macros' not in self.app.profiles[self.app.active_profile]:
+                self.app.profiles[self.app.active_profile]['macros'] = {}
+                
+            self.app.profiles[self.app.active_profile]['macros'][name] = editor.result
+            self.app.save_profiles()
+            self.refresh_list()
+
+    def edit_macro(self):
+        sel = self.listbox.curselection()
+        if not sel: return
+        name = self.listbox.get(sel[0])
+        
+        macros = self.app.profiles[self.app.active_profile].get('macros', {})
+        data = macros.get(name)
+        
+        editor = MacroEditorDialog(self, data)
+        if editor.result:
+            new_name = editor.result.get('name')
+            
+            # Handle Rename
+            if new_name != name:
+                del macros[name]
+                
+            macros[new_name] = editor.result
+            self.app.save_profiles()
+            self.refresh_list()
+
+    def duplicate_macro(self):
+        sel = self.listbox.curselection()
+        if not sel: return
+        name = self.listbox.get(sel[0])
+        
+        macros = self.app.profiles[self.app.active_profile].get('macros', {})
+        data = macros.get(name).copy()
+        data['name'] = f"{name} (Copy)"
+        
+        macros[data['name']] = data
+        self.app.save_profiles()
+        self.refresh_list()
+
+    def delete_macro(self):
+        sel = self.listbox.curselection()
+        if not sel: return
+        name = self.listbox.get(sel[0])
+        
+        if messagebox.askyesno("Confirm", f"Delete macro '{name}'?"):
+            del self.app.profiles[self.app.active_profile]['macros'][name]
+            self.app.save_profiles()
+            self.refresh_list()
+
+
 class TextTypingDialog(tk.Toplevel):
     def __init__(self, parent, current_data=None):
         super().__init__(parent)
@@ -488,15 +589,31 @@ class KeybindEditorDialog(tk.Toplevel):
             child.grid_remove()
             
         if action == ACTION_MACRO:
-             # Macro Editor Integration
-             Label(self.content_frame, text="Macro Sequence:").grid(row=0, column=0, sticky="w", pady=(0, 5))
+             # Macro Selection UI
+             Label(self.content_frame, text="Select Macro:", style="Header.TLabel").grid(row=0, column=0, sticky="w", pady=(0, 5))
              
-             self.macro_summary_lbl = Label(self.content_frame, text=f"{self.macro_name} ({len(self.macro_actions)} Actions)")
-             self.macro_summary_lbl.grid(row=1, column=0, sticky="w", pady=(0, 10))
+             macros = self.master.profiles[self.master.active_profile].get('macros', {})
+             macro_names = sorted(macros.keys())
              
-             Button(self.content_frame, text="Open Macro Editor", command=self.open_macro_editor).grid(row=2, column=0, sticky="w")
+             self.macro_select_var = tk.StringVar()
+             if self.current_data and self.current_data.get('type') == ACTION_MACRO:
+                 # Check if it was a reference or embedded
+                 saved_name = self.current_data.get('macro_name')
+                 if saved_name and saved_name in macros:
+                     self.macro_select_var.set(saved_name)
+                 elif self.current_data.get('name') and self.current_data.get('name') in macros:
+                      self.macro_select_var.set(self.current_data.get('name'))
              
-             self.ok_btn.configure(text="Save Macro Bind")
+             self.macro_combo = ttk.Combobox(self.content_frame, textvariable=self.macro_select_var, values=macro_names, state="readonly")
+             self.macro_combo.grid(row=1, column=0, sticky="ew", pady=(0, 10))
+             
+             btn_frame = Frame(self.content_frame)
+             btn_frame.grid(row=2, column=0, sticky="w")
+             
+             ttk.Button(btn_frame, text="New Macro", command=self.create_new_macro).pack(side=tk.LEFT, padx=(0, 5))
+             ttk.Button(btn_frame, text="Edit Selected", command=self.edit_selected_macro).pack(side=tk.LEFT)
+             
+             self.ok_btn.configure(text="Bind Macro")
              
         else:
             # Mouse Action
@@ -508,17 +625,42 @@ class KeybindEditorDialog(tk.Toplevel):
             else:
                  self.ok_btn.configure(text="Set Location & Save")
 
-    def open_macro_editor(self):
-        editor = MacroEditorDialog(self, {
-            "name": self.macro_name,
-            "actions": self.macro_actions,
-            "playback": self.macro_playback
-        })
-        if editor.result is not None:
-            self.macro_name = editor.result.get('name', 'My Macro')
-            self.macro_actions = editor.result['actions']
-            self.macro_playback = editor.result['playback']
-            self.macro_summary_lbl.config(text=f"{self.macro_name} ({len(self.macro_actions)} Actions)")
+    def create_new_macro(self):
+        editor = MacroEditorDialog(self, {"name": "New Macro"})
+        if editor.result:
+            name = editor.result.get('name')
+            if not name: return
+            
+            # Save to library (via App reference in master)
+            if 'macros' not in self.master.profiles[self.master.active_profile]:
+                self.master.profiles[self.master.active_profile]['macros'] = {}
+                
+            self.master.profiles[self.master.active_profile]['macros'][name] = editor.result
+            self.master.save_profiles()
+            
+            # Update Combo
+            self.on_type_changed(None)
+            self.macro_select_var.set(name)
+
+    def edit_selected_macro(self):
+        name = self.macro_select_var.get()
+        if not name: return
+        
+        macros = self.master.profiles[self.master.active_profile].get('macros', {})
+        data = macros.get(name)
+        
+        editor = MacroEditorDialog(self, data)
+        if editor.result:
+            new_name = editor.result.get('name')
+            
+            if new_name != name:
+                del macros[name]
+            
+            macros[new_name] = editor.result
+            self.master.save_profiles()
+            
+            self.on_type_changed(None)
+            self.macro_select_var.set(new_name)
 
     def update_delay_ui(self):
         mode = self.delay_mode_var.get()
@@ -578,15 +720,19 @@ class KeybindEditorDialog(tk.Toplevel):
             return
             
         if action_type == ACTION_MACRO:
+            name = self.macro_select_var.get()
+            if not name:
+                messagebox.showwarning("Selection Required", "Please select a macro.")
+                return
+
             data = {
                 "type": ACTION_MACRO,
-                "name": self.macro_name,
-                "actions": self.macro_actions,
-                "playback": self.macro_playback
+                "macro_name": name
             }
             self.result = (key, data, False)
             self.destroy()
             return
+
 
 
 
@@ -656,7 +802,7 @@ class KeybindApp:
                 pass # Handle empty or corrupt file gracefully
 
         if not self.profiles:
-             self.profiles = {default_profile_name: {'keybinds': {}}}
+             self.profiles = {default_profile_name: {'keybinds': {}, 'macros': {}}}
         
         # Ensure active profile is valid
         if self.active_profile not in self.profiles:
@@ -688,7 +834,10 @@ class KeybindApp:
         self.add_button.pack(fill=tk.X, ipady=5)
         
         self.view_binds_button = ttk.Button(self.main_frame, text="Manage Binds", command=self.show_keybinds)
-        self.view_binds_button.pack(fill=tk.X, pady=(0, 20), ipady=5)
+        self.view_binds_button.pack(fill=tk.X, pady=(0, 5), ipady=5)
+
+        self.manage_macros_button = ttk.Button(self.main_frame, text="Manage Macros", command=self.show_macro_manager)
+        self.manage_macros_button.pack(fill=tk.X, pady=(0, 20), ipady=5)
 
         # Profile Section
         ttk.Label(self.main_frame, text="Active Profile:", style="Header.TLabel").pack(anchor=tk.W, pady=(0, 5))
@@ -920,6 +1069,17 @@ class KeybindApp:
                  action_type = bind_data.get('type')
                  
                  if action_type == ACTION_MACRO:
+                    # Check for Macro Reference
+                    if 'macro_name' in bind_data:
+                        macro_name = bind_data['macro_name']
+                        macros = self.profiles[self.active_profile].get('macros', {})
+                        if macro_name in macros:
+                            # Use the referenced macro data
+                            bind_data = macros[macro_name]
+                        else:
+                            print(f"Macro '{macro_name}' not found!")
+                            return
+                    
                     actions = bind_data.get('actions', [])
                     playback = bind_data.get('playback', {})
                     mode = playback.get('mode', 'once')
@@ -1110,6 +1270,9 @@ class KeybindApp:
             self.profiles[self.active_profile]['keybinds'].clear()
             self.save_profiles()
             self.update_status("Keybinds cleared.")
+
+    def show_macro_manager(self):
+        MacroManagerDialog(self.root, self)
 
     def show_keybinds(self):
         win = tk.Toplevel(self.root)
