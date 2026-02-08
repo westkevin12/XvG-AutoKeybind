@@ -3,13 +3,17 @@
 A simple Python GUI application that allows users to bind keys to specific mouse click coordinates.
 
 ## Features
-- Create multiple profiles for different keybind sets.
-- Bind any key to a screen coordinate.
-- System tray integration for background operation.
-- GUI interface built with Tkinter.
+- **Keybinding**: Bind any key combination to specific screen coordinates.
+- **Action Types**: Support for Click, Double-Click, Drag, and more.
+- **Macro Suite**: Create and save complex sequences of clicks, keystrokes, and delays.
+- **Auto-Typer**: Integrated text typing with human-like random delay support.
+- **Profile Management**: Save multiple sets of keybinds for different applications or games.
+- **Safety Kill-Switch**: Global emergency stop (`Ctrl + Alt + K`) or `Esc` to halt all actions.
+- **System Tray Integration**: Runs quietly in the background with a tray icon.
+- **Cross-Platform Support**: Built for Windows and Linux.
 
 ## Requirements
-- Python 3.x
+- Python 3.8+
 - Dependencies listed in `requirements.txt`
 
 ## Installation
@@ -27,26 +31,39 @@ A simple Python GUI application that allows users to bind keys to specific mouse
 
 ## Usage
 
-1.  **Launch the Application**: Run `autokeybind.py`.
+1.  **Launch the Application**: Run `python autokeybind.py`.
 2.  **Manage Profiles**: 
     - Create new profiles or use the "Default" one.
     - Profiles are saved automatically to `profiles.json`.
 3.  **Add Keybinds**:
     - Click **"Add Keybind"**.
-    - A dialog will appear:
-        - **Key**: Enter the key you want to bind (e.g., `a`, `F1`).
-        - **Action Type**: Select the behavior you want:
-            - **Click & Return**: Clicks the target and returns cursor to original position (Default).
-            - **Click & Stay**: Clicks the target and leaves the cursor there.
-            - **Double Click & Return**: Double-clicks the target and returns.
-            - **Drag & Return**: Moves to target, holds mouse down, returns to original pos, releases (simulates dragging item back).
-    - Click **"Set Location"**.
-    - Click anywhere on your screen to define the target coordinate.
-4.  **Test**: Press your bound key to execute the action.
-5.  **System Tray**: The app minimizes to the tray. Right-click the tray icon to exit.
+    - **Key**: Record your key combination (e.g., `Ctrl+F1`).
+    - **Action Type**:
+        - **Click/Double-Click**: Basic mouse actions at a location.
+        - **Drag & Return**: Hold and move mouse back to starting point.
+        - **Macro / Sequence**: Select a saved macro or create a new one.
+4.  **Macro Editor**:
+    - Use the **"Manage Macros"** button to build complex sequences.
+    - Add delays, text typing, and keypresses to your sequence.
+    - Reorder actions using "Move Up/Down".
+5.  **Global Kill-Switch**: 
+    - Press **`Ctrl + Alt + K`** at any time to immediately stop all execution and exit.
+    - Press **`Esc`** to stop a running macro.
+
+## Automation & Building
+
+The project includes scripts in the `scripts/` directory for building and publishing:
+
+### Building Binaries
+- **Windows/Linux (Bash)**: Run `./scripts/build_installer.sh`. (Requires PyInstaller and Inno Setup for installer).
+- **Windows (PowerShell)**: Run `.\scripts\build_installer.ps1`.
+
+### Publishing Releases
+- **Bash**: `./scripts/publish_release.sh <version>` (e.g., `./scripts/publish_release.sh v0.0.2`).
+- **PowerShell**: `.\scripts\publish_release.ps1 -Version v0.0.2`.
 
 ## Contributing
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
 
 ## License
-[GPLv3](https://mp.weixin.qq.com/s/7mQpP8k1T5x6fJ7pFf1g)
+[GPLv3](LICENSE)

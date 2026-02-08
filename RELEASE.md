@@ -17,7 +17,13 @@
 - **Top-Level Windows**: "Manage Binds" and Editor windows now stay on top of the main application.
 - **Improved Layout**: Better button visibility and resizing behavior.
 
+### Automation & Deployment
+- **Cross-Platform Build Scripts**: New scripts in `scripts/` for building Windows and Linux binaries.
+- **Installer Automation**: Automated Inno Setup installer creation via scripts.
+- **Publishing Workflow**: Unified scripts to tag and publish releases to GitHub.
+
 ## 🛠 Fixes & Improvements
 - Fixed Z-Order issues where popup windows would appear behind the main window.
 - Refactored internal action handling for better performance and stability.
 - Added Linux binary support for cross-platform usage (via WSL build).
+- Improved error handling for missing dependencies during startup.
