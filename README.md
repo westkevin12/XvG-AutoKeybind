@@ -45,6 +45,7 @@ A simple Python GUI application that allows users to bind keys to specific mouse
 4.  **Macro Editor**:
     - Use the **"Manage Macros"** button to build complex sequences.
     - Add delays, text typing, and keypresses to your sequence.
+    - **Tip**: In the text editor, you can use **`\n`** to simulate an **Enter** keypress after typing text.
     - Reorder actions using "Move Up/Down".
 5.  **Global Kill-Switch**: 
     - Press **`Ctrl + Alt + K`** at any time to immediately stop all execution and exit.
