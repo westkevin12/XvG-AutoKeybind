@@ -140,9 +140,9 @@ class TextTypingDialog(tk.Toplevel):
     def __init__(self, parent, current_data=None):
         super().__init__(parent)
         self.title("Add Text Action")
-        self.geometry("400x350")
+        self.geometry("450x400")
         self.wm_attributes("-topmost", 1)
-        self.resizable(False, False)
+        self.resizable(True, True)
         self.result = None
         
         # Main Frame
