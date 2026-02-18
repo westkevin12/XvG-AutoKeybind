@@ -1,29 +1,20 @@
-# Release v0.0.02
+# Release v0.0.3
 
-## 🚀 New Features
+## 🐧 Linux Support & Compatibility
 
-### Macro Suite
-- **Complex Macros**: Create sequences of actions including Clicks, Keypresses, Delays, and Text Typing.
-- **Macro Editor**: A dedicated UI to build, reorder, and save your action sequences.
-- **Auto-Typer Integration**: Add text actions within macros with advanced delay configurations:
-    - **Static Delay**: Fixed time between keystrokes.
-    - **Random Delay**: Human-like typing with variable delays (Min/Max).
+- **Native Wayland Detection**: The application now detects Wayland sessions and warns users about compatibility issues with global input.
+- **Dependency Checks**: Added startup checks for `xdotool` to ensure input simulation works correctly.
+- **Improved Documentation**: Updated README with specific instructions for Ubuntu/Linux users regarding X11 sessions and permissions.
+- **Linux Binary Release**: This release includes a standalone Linux binary for easier distribution.
 
-### Safety & Stability
-- **Global Kill-Switch**: Press `Ctrl + Alt + K` to immediately stop all running macros and close the application.
-- **Esc Interruption**: Pressing `Esc` while a macro is running will also trigger the emergency stop.
+## 🛠 Enhancements
 
-### User Interface
-- **Top-Level Windows**: "Manage Binds" and Editor windows now stay on top of the main application.
-- **Improved Layout**: Better button visibility and resizing behavior.
+- **Release Script**: Updated build and release scripts to support Linux-only environments and CI/CD workflows.
+- **Error Handling**: Better error messages for missing system dependencies.
 
-### Automation & Deployment
-- **Cross-Platform Build Scripts**: New scripts in `scripts/` for building Windows and Linux binaries.
-- **Installer Automation**: Automated Inno Setup installer creation via scripts.
-- **Publishing Workflow**: Unified scripts to tag and publish releases to GitHub.
+## 📦 Installation (Linux)
 
-## 🛠 Fixes & Improvements
-- Fixed Z-Order issues where popup windows would appear behind the main window.
-- Refactored internal action handling for better performance and stability.
-- Added Linux binary support for cross-platform usage (via WSL build).
-- Improved error handling for missing dependencies during startup.
+1. Download `XvG-AutoKeybind` from assets.
+2. Make it executable: `chmod +x XvG-AutoKeybind`
+3. Run it: `./XvG-AutoKeybind`
+   _Note: Ensure you are in an X11 session._

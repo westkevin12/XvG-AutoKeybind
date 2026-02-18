@@ -43,22 +43,26 @@ RELEASE_NOTES="RELEASE.md"
 
 # Check artifacts (Warn if missing, but try to proceed with what we have?)
 # Better to fail if critical ones are missing.
+# Check artifacts
+# Windows Artifacts (Optional on Linux host if not cross-compiling, but good to warn)
 if [ ! -f "$EXE_PATH" ]; then
-    # Fallback check if it's in older location or user ran old script?
+    # Fallback check
     if [ -f "dist/XvGKeybind.exe" ]; then
         EXE_PATH="dist/XvGKeybind.exe"
     else
-        echo "Error: Windows Executable not found at $EXE_PATH"
-        exit 1
+        echo "Warning: Windows Executable not found at $EXE_PATH"
+        EXE_PATH=""
     fi
 fi
 
 if [ ! -f "$INSTALLER_PATH" ]; then
-     echo "Error: Installer not found at $INSTALLER_PATH"
-     exit 1
+     echo "Warning: Installer not found at $INSTALLER_PATH"
+     INSTALLER_PATH=""
 fi
 
-ARGS=("$VERSION" "$EXE_PATH" "$INSTALLER_PATH")
+ARGS=("$VERSION")
+if [ -n "$EXE_PATH" ]; then ARGS+=("$EXE_PATH"); fi
+if [ -n "$INSTALLER_PATH" ]; then ARGS+=("$INSTALLER_PATH"); fi
 
 if [ -f "$LINUX_PATH" ]; then
     ARGS+=("$LINUX_PATH")
