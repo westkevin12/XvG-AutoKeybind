@@ -16,6 +16,7 @@ from PIL import Image, ImageTk
 from key_utils import get_key_combo_string
 import platform
 import subprocess
+import shutil
 
 
 
@@ -1509,5 +1510,27 @@ class KeybindApp:
 
 if __name__ == "__main__":
     root = tk.Tk()
+
+    # --- Linux Capability Checks ---
+    if platform.system() == "Linux":
+        # Check for Wayland
+        if os.environ.get('WAYLAND_DISPLAY'):
+             messagebox.showwarning(
+                "Wayland Detected",
+                "Wayland display server detected.\n\n"
+                "Global input simulation (keybinds/macros) may not work correctly due to security restrictions.\n\n"
+                "Please switch to an X11 session (Ubuntu on Xorg) for full functionality."
+             )
+        
+        # Check for xdotool
+        if not shutil.which("xdotool"):
+            messagebox.showerror(
+                "Missing Dependency",
+                "xdotool is not installed.\n\n"
+                "This application requires xdotool to simulate input on Linux.\n\n"
+                "Please run: sudo apt-get install xdotool"
+            )
+    # -------------------------------
+
     app = KeybindApp(root)
     root.mainloop()

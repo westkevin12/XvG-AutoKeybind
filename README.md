@@ -51,8 +51,16 @@ A simple Python GUI application that allows users to bind keys to specific mouse
    On Linux (Ubuntu/Debian), you need system libraries:
 
    ```bash
-   sudo apt-get install build-essential python3-dev libevdev-dev python3-tk
+   sudo apt-get install build-essential python3-dev libevdev-dev python3-tk xdotool
    ```
+
+   **Permissions & Troubleshooting**:
+   - **Display Server**: Ensure you are running an **X11 session** (select "Ubuntu on Xorg" at login). Wayland is not supported for global input simulation.
+   - **Input Permissions**: You may need to add your user to the `input` group to detect keypresses:
+     ```bash
+     sudo usermod -aG input $USER
+     # Log out and back in for changes to take effect
+     ```
 
 ## Usage
 
