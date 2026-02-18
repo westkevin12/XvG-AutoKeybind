@@ -37,7 +37,7 @@ echo "Preparing to publish release $VERSION..."
 
 # Define Artifacts
 EXE_PATH="dist/windows/XvGKeybind.exe"
-LINUX_PATH="dist/linux/XvGKeybind"
+LINUX_PATH="dist/XvG-AutoKeybind"
 INSTALLER_PATH="Output/XvGAutoSetup.exe"
 RELEASE_NOTES="RELEASE.md"
 
@@ -63,7 +63,13 @@ ARGS=("$VERSION" "$EXE_PATH" "$INSTALLER_PATH")
 if [ -f "$LINUX_PATH" ]; then
     ARGS+=("$LINUX_PATH")
 else
-    echo "Warning: Linux binary not found at $LINUX_PATH. Publishing without it."
+    # Try alternate path from build_installer.sh just in case
+    if [ -f "dist/linux/XvGKeybind" ]; then
+        ARGS+=("dist/linux/XvGKeybind")
+        echo "Found Linux binary at dist/linux/XvGKeybind"
+    else
+        echo "Warning: Linux binary not found at $LINUX_PATH or dist/linux/XvGKeybind. Publishing without it."
+    fi
 fi
 
 # Run gh release create

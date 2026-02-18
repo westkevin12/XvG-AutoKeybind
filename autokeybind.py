@@ -14,6 +14,11 @@ import threading
 import pystray
 from PIL import Image, ImageTk
 from key_utils import get_key_combo_string
+import platform
+import subprocess
+import shutil
+
+
 
 # Action Types Constant
 ACTION_CLICK_RETURN = "Click & Return"
@@ -799,9 +804,35 @@ class KeybindApp:
 
         # Setup System Tray
         self.setup_tray_icon()
-
+        
+        # Check Display Server (Linux)
+        self.check_display_server()
+        
+        # Check for xdotool
+        self.has_xdotool = False
+        if platform.system() == 'Linux':
+            try:
+                subprocess.run(['xdotool', '--version'], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                self.has_xdotool = True
+                 # print("[INFO] xdotool detected.")
+            except FileNotFoundError:
+                 pass # print("[WARNING] xdotool not found.")
+        
         # Start Input Listeners
         self.start_listeners()
+
+    def check_display_server(self):
+        if platform.system() == 'Linux':
+            session_type = os.environ.get('XDG_SESSION_TYPE')
+            if session_type == 'wayland':
+                # Show warning in GUI since binary users won't see console
+                messagebox.showwarning(
+                    "Wayland Detected", 
+                    "You are running on Wayland. Global input simulation is restricted.\n\n"
+                    "Please switch to X11 (Ubuntu on Xorg) for full functionality."
+                )
+
+
 
     def load_profiles(self):
         self.profiles = {}
@@ -968,7 +999,13 @@ class KeybindApp:
         original_position = pyautogui.position()
         
         if action_type == ACTION_CLICK_RETURN:
+
+            if platform.system() == 'Linux':
+                self.perform_linux_action(x, y, action_type, original_position)
+                return
+            
             pyautogui.click(x, y)
+
             pyautogui.moveTo(original_position)
             
         elif action_type == ACTION_CLICK_STAY:
@@ -990,6 +1027,40 @@ class KeybindApp:
         else:
             pyautogui.click(x, y)
             pyautogui.moveTo(original_position)
+
+    def perform_linux_action(self, x, y, action_type, original_position):
+        if not self.has_xdotool:
+            print("[WARNING] Skipping Linux action: xdotool missing")
+            return
+
+        try:
+            # Common: Move to target
+            subprocess.run(['xdotool', 'mousemove', str(x), str(y)], check=True)
+            
+            if action_type == ACTION_CLICK_RETURN:
+                subprocess.run(['xdotool', 'click', '1'], check=True)
+                subprocess.run(['xdotool', 'mousemove', str(original_position.x), str(original_position.y)], check=True)
+                
+            elif action_type == ACTION_CLICK_STAY:
+                subprocess.run(['xdotool', 'click', '1'], check=True)
+                
+            elif action_type == ACTION_DOUBLE_CLICK_RETURN:
+                subprocess.run(['xdotool', 'click', '--repeat', '2', '1'], check=True)
+                subprocess.run(['xdotool', 'mousemove', str(original_position.x), str(original_position.y)], check=True)
+                
+            elif action_type == ACTION_DRAG_RETURN:
+                subprocess.run(['xdotool', 'mousedown', '1'], check=True)
+                time.sleep(0.1)
+                subprocess.run(['xdotool', 'mousemove', str(original_position.x), str(original_position.y)], check=True)
+                subprocess.run(['xdotool', 'mouseup', '1'], check=True)
+                
+            else: # Default click return
+                subprocess.run(['xdotool', 'click', '1'], check=True)
+                subprocess.run(['xdotool', 'mousemove', str(original_position.x), str(original_position.y)], check=True)
+                
+        except Exception as e:
+            print(f"[ERROR] Linux action failed: {e}")
+
 
     # --- Kill-Switch Implementation ---
     def emergency_stop(self):
@@ -1045,6 +1116,8 @@ class KeybindApp:
             
             if current_combo_str in binds:
                  if self.running_macro:
+
+
                      print("Macro already running, ignoring trigger.")
                      return
                  
@@ -1146,12 +1219,26 @@ class KeybindApp:
                 coords = action.get('coords')
                 btn = action.get('button', 'left')
                 if coords:
-                    pyautogui.click(coords[0], coords[1], button=btn)
+                    if platform.system() == 'Linux':
+                        self.execute_linux_click(coords[0], coords[1], btn)
+                    else:
+                        pyautogui.click(coords[0], coords[1], button=btn)
+
                     
             elif a_type == 'key':
                  k = action.get('key')
                  if k:
                      pyautogui.press(k)
+
+    def execute_linux_click(self, x, y, button):
+        if not self.has_xdotool: return
+        btn_map = {'left': '1', 'middle': '2', 'right': '3'}
+        b = btn_map.get(button.lower(), '1')
+        try:
+            subprocess.run(['xdotool', 'mousemove', str(x), str(y), 'click', b], check=True)
+        except Exception as e:
+            print(f"[ERROR] Macro click failed: {e}")
+
 
     def execute_text_action(self, action_data):
         content = action_data.get('content', '')
@@ -1423,5 +1510,27 @@ class KeybindApp:
 
 if __name__ == "__main__":
     root = tk.Tk()
+
+    # --- Linux Capability Checks ---
+    if platform.system() == "Linux":
+        # Check for Wayland
+        if os.environ.get('WAYLAND_DISPLAY'):
+             messagebox.showwarning(
+                "Wayland Detected",
+                "Wayland display server detected.\n\n"
+                "Global input simulation (keybinds/macros) may not work correctly due to security restrictions.\n\n"
+                "Please switch to an X11 session (Ubuntu on Xorg) for full functionality."
+             )
+        
+        # Check for xdotool
+        if not shutil.which("xdotool"):
+            messagebox.showerror(
+                "Missing Dependency",
+                "xdotool is not installed.\n\n"
+                "This application requires xdotool to simulate input on Linux.\n\n"
+                "Please run: sudo apt-get install xdotool"
+            )
+    # -------------------------------
+
     app = KeybindApp(root)
     root.mainloop()
