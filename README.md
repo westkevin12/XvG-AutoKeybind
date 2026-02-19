@@ -11,100 +11,95 @@ A simple Python GUI application that allows users to bind keys to specific mouse
 - **Profile Management**: Save multiple sets of keybinds for different applications or games.
 - **Safety Kill-Switch**: Global emergency stop (`Ctrl + Alt + K`) or `Esc` to halt all actions.
 - **System Tray Integration**: Runs quietly in the background with a tray icon.
-- **Cross-Platform Support**: Built for Windows and Linux.
+- **Cross-Platform Support**: Optimized for Windows (Pynput) and Linux (Evdev/UInput).
+- **Wayland Native**: Pixel-perfect click synchronization on Wayland using hardware-level absolute coordinate injection.
 
 ## Requirements
 
 - Python 3.8+
 - Dependencies listed in `requirements.txt`
+- (Linux) `libevdev` and `uinput` kernel support.
 
 ## Installation
 
-1. Clone the repository:
+### 1. Clone & Setup
 
+```bash
+git clone https://github.com/westkevin12/XvG-AutoKeybind.git
+cd XvG-AutoKeybind
+```
+
+### 2. Linux System Setup (Wayland & X11)
+
+On Linux, the application uses **Evdev** to bypass compositor restrictions and **UInput** for hardware-level injection.
+
+**Automatic Setup (Ubuntu/Debian)**:
+
+```bash
+# Installs system libraries, sets up groups, and configures udev rules
+./scripts/install_linux.sh
+```
+
+**Manual Setup**:
+
+1. **Dependencies**: `sudo apt-get install build-essential python3-dev libevdev-dev python3-tk xdotool`
+2. **Permissions**: Add your user to the `input` and `uinput` groups.
+3. **UDev Rules**: Ensure `/dev/uinput` is accessible. You can use the helper script:
    ```bash
-   git clone https://github.com/westkevin12/XvG-AutoKeybind.git
-   cd XvG-AutoKeybind
+   ./scripts/fix_wayland_permissions.sh
    ```
+4. **Login**: You **must log out and log back in** (or restart) for group changes to take effect. If you're in a hurry, run `newgrp input` in your terminal.
 
-2. Install dependencies:
+### 3. Python Dependencies
 
-   **Option 1: Using `uv` (Recommended)**
+**Recommended (UV)**:
 
-   ```bash
-   # Install uv (if not installed)
-   curl -LsSf https://astral.sh/uv/install.sh | sh
-   # OR via snap: sudo snap install astral-uv --classic
+```bash
+uv venv
+uv pip install -r requirements.txt
+```
 
-   # Setup environment & install
-   uv venv
-   uv pip install -r requirements.txt
-   ```
+**Standard Pip**:
 
-   **Option 2: Using standard pip**
-
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-   **Linux Requirements**:
-   On Linux (Ubuntu/Debian), you need system libraries:
-
-   ```bash
-   sudo apt-get install build-essential python3-dev libevdev-dev python3-tk xdotool
-   ```
-
-   **Permissions & Troubleshooting**:
-   - **Display Server**: Ensure you are running an **X11 session** (select "Ubuntu on Xorg" at login). Wayland is not supported for global input simulation.
-   - **Input Permissions**: You may need to add your user to the `input` group to detect keypresses:
-     ```bash
-     sudo usermod -aG input $USER
-     # Log out and back in for changes to take effect
-     ```
+```bash
+pip install -r requirements.txt
+```
 
 ## Usage
 
-> [!IMPORTANT]
-> **Linux Users**: This application **requires an X11 session** to function correctly due to Wayland's security restrictions on global input simulation.
-> If you are on Ubuntu, log out and select "Ubuntu on Xorg" at the login screen.
+1.  **Launch the Application**:
+    - Run `uv run autokeybind.py` or `python autokeybind.py`.
+    - Check the status bar:
+      - `Input: Evdev (Global)` -> Full Wayland/Background support.
+      - `Input: Pynput (Restricted)` -> Fallback mode (mostly X11/Windows).
 
-1.  **Launch the Application**: Run `python autokeybind.py`.
 2.  **Manage Profiles**:
     - Create new profiles or use the "Default" one.
     - Profiles are saved automatically to `profiles.json`.
 3.  **Add Keybinds**:
     - Click **"Add Keybind"**.
-    - **Key**: Record your key combination (e.g., `Ctrl+F1`).
     - **Action Type**:
-      - **Click/Double-Click**: Basic mouse actions at a location.
-      - **Drag & Return**: Hold and move mouse back to starting point.
-      - **Macro / Sequence**: Select a saved macro or create a new one.
+      - **Click/Double-Click**: Basic mouse actions.
+      - **Drag & Return**: Hardware-synced drag operations.
 4.  **Macro Editor**:
-    - Use the **"Manage Macros"** button to build complex sequences.
-    - Add delays, text typing, and keypresses to your sequence.
-    - **Tip**: In the text editor, you can use **`\n`** to simulate an **Enter** keypress after typing text.
-    - Reorder actions using "Move Up/Down".
+    - Use the **"Manage Macros"** button to build sequences.
+    - **Tip**: In the text editor, use **`\n`** for **Enter**.
 5.  **Global Kill-Switch**:
-    - Press **`Ctrl + Alt + K`** at any time to immediately stop all execution and exit.
+    - Press **`Ctrl + Alt + K`** to exit immediately.
     - Press **`Esc`** to stop a running macro.
+
+## Project Structure
+
+- `autokeybind.py`: Main GUI and application logic.
+- `input_engine.py`: Core input sniffing and injection (Pynput & Evdev).
+- `scripts/`: Production build and installation tools.
+- `tests/`: Essential regression and verification tests.
+- `profiles.json`: Saved configurations.
 
 ## Automation & Building
 
-The project includes scripts in the `scripts/` directory for building and publishing:
-
-### Building Binaries
-
-- **Linux (Bash)**:
-  1. Ensure dependencies are installed: `./scripts/install_linux.sh`
-  2. Build binary: `./scripts/build_linux.sh`  
-     (Output binary will be in `dist/XvG-AutoKeybind`)
-- **Windows (Bash)**: Run `./scripts/build_installer.sh`. (Requires PyInstaller and Inno Setup).
-- **Windows (PowerShell)**: Run `.\scripts\build_installer.ps1`.
-
-### Publishing Releases
-
-- **Bash**: `./scripts/publish_release.sh <version>` (e.g., `./scripts/publish_release.sh v0.0.2`).
-- **PowerShell**: `.\scripts\publish_release.ps1 -Version v0.0.2`.
+- **Linux**: `./scripts/build_linux.sh` (Output in `dist/release/`)
+- **Windows**: `./scripts/build_installer.sh`
 
 ## Contributing
 
