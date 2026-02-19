@@ -12,7 +12,8 @@ if ($Version -notmatch "^v\d+\.\d+(\.\d+)?") {
 Write-Host "Preparing to publish release $Version..." -ForegroundColor Cyan
 
 # Define Artifacts
-$exePath = "dist\XvGKeybind.exe"
+# Define Artifacts
+$exePath = "dist\XvG-AutoKeybind.exe"
 $installerPath = "Output\XvGAutoSetup.exe"
 $releaseNotesFile = "RELEASE.md"
 
