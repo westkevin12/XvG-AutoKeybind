@@ -1311,10 +1311,12 @@ class KeybindApp:
             self.emergency_stop()
             return
 
-        self.check_and_perform_action()
-
     def on_key_release(self, key):
         # print(f"DEBUG: Key Released: {key}")
+        
+        # Check for bind BEFORE removing the key
+        self.check_and_perform_action()
+
         if key in self.current_pressed_keys:
             self.current_pressed_keys.remove(key)
 
