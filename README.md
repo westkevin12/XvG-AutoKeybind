@@ -43,12 +43,12 @@ On Linux, the application uses **Evdev** to bypass compositor restrictions and *
 **Manual Setup**:
 
 1. **Dependencies**: `sudo apt-get install build-essential python3-dev libevdev-dev python3-tk xdotool`
-2. **Permissions**: Add your user to the `input` and `uinput` groups.
-3. **UDev Rules**: Ensure `/dev/uinput` is accessible. You can use the helper script:
+2. **Permissions**: The app requires access to `/dev/uinput` and input devices. We use `udev` rules to grant this securely to the current user (via `uaccess` tag).
+3. **UDev Rules**: Run the helper script to install the rules:
    ```bash
    ./scripts/fix_wayland_permissions.sh
    ```
-4. **Login**: You **must log out and log back in** (or restart) for group changes to take effect. If you're in a hurry, run `newgrp input` in your terminal.
+4. **Apply Changes**: You may need to **reboot or re-login** for these `udev` rules to apply to existing devices.
 
 ### 3. Python Dependencies
 
