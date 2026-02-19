@@ -10,7 +10,7 @@ if (Test-Path "Output") { Remove-Item -Recurse -Force "Output" }
 
 # 2. Run PyInstaller
 Write-Host "Running PyInstaller..." -ForegroundColor Cyan
-pyinstaller XvGKeybind.spec --noconfirm --clean
+pyinstaller XvG-AutoKeybind.spec --noconfirm --clean
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "PyInstaller failed!" -ForegroundColor Red
@@ -40,5 +40,5 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host "Build Complete!" -ForegroundColor Green
 Write-Host "Artifacts:"
-Write-Host " - EXE: dist\XvGKeybind.exe"
+Write-Host " - EXE: dist\XvG-AutoKeybind.exe"
 Write-Host " - Installer: Output\XvGAutoSetup.exe"

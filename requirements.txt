@@ -2,3 +2,4 @@ pynput
 pyautogui
 Pillow
 pystray
+evdev; sys_platform == 'linux'

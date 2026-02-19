@@ -36,8 +36,9 @@ fi
 echo "Preparing to publish release $VERSION..."
 
 # Define Artifacts
-EXE_PATH="dist/windows/XvGKeybind.exe"
-LINUX_PATH="dist/XvG-AutoKeybind"
+# Define Artifacts
+EXE_PATH="dist/windows/XvG-AutoKeybind.exe"
+LINUX_PATH="dist/release/XvG-AutoKeybind"
 INSTALLER_PATH="Output/XvGAutoSetup.exe"
 RELEASE_NOTES="RELEASE.md"
 
@@ -47,8 +48,8 @@ RELEASE_NOTES="RELEASE.md"
 # Windows Artifacts (Optional on Linux host if not cross-compiling, but good to warn)
 if [ ! -f "$EXE_PATH" ]; then
     # Fallback check
-    if [ -f "dist/XvGKeybind.exe" ]; then
-        EXE_PATH="dist/XvGKeybind.exe"
+    if [ -f "dist/XvG-AutoKeybind.exe" ]; then
+        EXE_PATH="dist/XvG-AutoKeybind.exe"
     else
         echo "Warning: Windows Executable not found at $EXE_PATH"
         EXE_PATH=""
@@ -66,13 +67,17 @@ if [ -n "$INSTALLER_PATH" ]; then ARGS+=("$INSTALLER_PATH"); fi
 
 if [ -f "$LINUX_PATH" ]; then
     ARGS+=("$LINUX_PATH")
+    # Also include the install script if present
+    if [ -f "dist/release/install.sh" ]; then
+        ARGS+=("dist/release/install.sh")
+    fi
 else
     # Try alternate path from build_installer.sh just in case
-    if [ -f "dist/linux/XvGKeybind" ]; then
-        ARGS+=("dist/linux/XvGKeybind")
-        echo "Found Linux binary at dist/linux/XvGKeybind"
+    if [ -f "dist/linux/XvG-AutoKeybind" ]; then
+        ARGS+=("dist/linux/XvG-AutoKeybind")
+        echo "Found Linux binary at dist/linux/XvG-AutoKeybind"
     else
-        echo "Warning: Linux binary not found at $LINUX_PATH or dist/linux/XvGKeybind. Publishing without it."
+        echo "Warning: Linux binary not found at $LINUX_PATH or dist/linux/XvG-AutoKeybind. Publishing without it."
     fi
 fi
 

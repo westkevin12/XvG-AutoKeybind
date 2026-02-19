@@ -30,25 +30,25 @@ if grep -qi microsoft /proc/version; then
     fi
 
     echo "Building Windows EXE (python.exe)..."
-    python.exe -m PyInstaller XvGKeybind.spec --noconfirm --clean --distpath dist/windows
+    python.exe -m PyInstaller XvG-AutoKeybind.spec --noconfirm --clean --distpath dist/windows
 
     # --- Linux Build ---
     echo "Building Linux Binary (pyinstaller)..."
-    pyinstaller XvGKeybind.spec --noconfirm --clean --distpath dist/linux
+    pyinstaller XvG-AutoKeybind.spec --noconfirm --clean --distpath dist/linux
 else
     # Native Linux (just build Linux)
     echo "Linux detected. Using pyinstaller..."
-    pyinstaller XvGKeybind.spec --noconfirm --clean --distpath dist/linux
+    pyinstaller XvG-AutoKeybind.spec --noconfirm --clean --distpath dist/linux
 fi
 
 # 3. Preparation for Inno Setup
 # Inno Setup expects the file in a specific location as per installer.iss
-# Source: "dist\XvGKeybind.exe"
+# Source: "dist\XvG-AutoKeybind.exe"
 # Since we built to dist/windows, we can copy it to dist/ or update installer.iss.
 # Copying is easier for now.
 mkdir -p dist
-if [ -f "dist/windows/XvGKeybind.exe" ]; then
-    cp "dist/windows/XvGKeybind.exe" "dist/XvGKeybind.exe"
+if [ -f "dist/windows/XvG-AutoKeybind.exe" ]; then
+    cp "dist/windows/XvG-AutoKeybind.exe" "dist/XvG-AutoKeybind.exe"
 fi
 
 # 4. Run Inno Setup
@@ -75,11 +75,11 @@ fi
 
 echo "Build Complete!"
 echo "Artifacts:"
-if [ -f "dist/windows/XvGKeybind.exe" ]; then
-    echo " - Windows EXE: dist/windows/XvGKeybind.exe"
+if [ -f "dist/windows/XvG-AutoKeybind.exe" ]; then
+    echo " - Windows EXE: dist/windows/XvG-AutoKeybind.exe"
 fi
-if [ -f "dist/linux/XvGKeybind" ]; then
-    echo " - Linux Binary: dist/linux/XvGKeybind"
+if [ -f "dist/linux/XvG-AutoKeybind" ]; then
+    echo " - Linux Binary: dist/linux/XvG-AutoKeybind"
 fi
 if [ -f "Output/XvGAutoSetup.exe" ]; then
     echo " - Installer: Output/XvGAutoSetup.exe"

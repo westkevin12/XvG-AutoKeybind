@@ -1,20 +1,44 @@
-# Release v0.0.3
+# Release v0.0.4
 
-## 🐧 Linux Support & Compatibility
+## 🚀 Wayland Support & Stability
 
-- **Native Wayland Detection**: The application now detects Wayland sessions and warns users about compatibility issues with global input.
-- **Dependency Checks**: Added startup checks for `xdotool` to ensure input simulation works correctly.
-- **Improved Documentation**: Updated README with specific instructions for Ubuntu/Linux users regarding X11 sessions and permissions.
-- **Linux Binary Release**: This release includes a standalone Linux binary for easier distribution.
+This release brings full compatibility for Wayland sessions on Linux, removing previous input simulation restrictions.
+
+- **Native Wayland Support**: Implemented `EvdevEngine` to bypass security restrictions via `/dev/input` and `/dev/uinput`.
+- **Absolute Mouse Synchronization**: Implemented hardware-level injection for both moves and clicks. This ensures pixel-perfect accuracy on high-resolution Wayland environments.
+- **Automatic Engine Selection**: Intelligent fallback between `evdev` (Wayland/Linux) and `pynput` (X11/Windows).
+- **Enhanced Stability**: Added a "Heartbeat" mechanism to automatically restart input listeners if they become unresponsive.
 
 ## 🛠 Enhancements
 
-- **Release Script**: Updated build and release scripts to support Linux-only environments and CI/CD workflows.
-- **Error Handling**: Better error messages for missing system dependencies.
+- **Input Handling**: Abstracted input logic into a flexible `InputEngine` architecture.
+- **Project Organization**: Cleaned up the `scripts/` directory and moved essential verification tools to a new `tests/` directory.
+- **Build System**: Resolved Linux binary build failures by including `fix_wayland_permissions.sh` script in the distribution.
 
-## 📦 Installation (Linux)
+## 📦 Installation & Setup (Linux)
 
-1. Download `XvG-AutoKeybind` from assets.
-2. Make it executable: `chmod +x XvG-AutoKeybind`
-3. Run it: `./XvG-AutoKeybind`
-   _Note: Ensure you are in an X11 session._
+**Important**: Wayland support requires kernel-level permissions.
+
+1. **Install Dependencies**:
+
+   ```bash
+   # Sets up libraries, groups, and udev rules
+   ./scripts/install_linux.sh
+   ```
+
+2. **Grant Permissions**:
+   If the installer didn't handle it or you prefer manual setup, run:
+
+   ```bash
+   ./scripts/fix_wayland_permissions.sh
+   ```
+
+   **Log out and back in** for group changes to stay active.
+
+3. **Run**:
+   ```bash
+   # For the pre-compiled release:
+   cd dist/release
+   sudo ./install.sh
+   ./XvG-AutoKeybind
+   ```

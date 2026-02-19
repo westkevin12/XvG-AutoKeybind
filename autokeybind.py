@@ -1,6 +1,7 @@
 import pyautogui
 from pynput.keyboard import Key, Listener, Controller
 from pynput.mouse import Listener as MouseListener, Controller as MouseController
+from input_engine import PynputEngine, EvdevEngine
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog, Scrollbar, Listbox, Toplevel
 from tkinter.ttk import Frame, Label, Entry, Button, Style
@@ -84,7 +85,7 @@ class MacroManagerDialog(tk.Toplevel):
             self.listbox.insert(tk.END, name)
 
     def create_macro(self):
-        editor = MacroEditorDialog(self, {"name": "New Macro"})
+        editor = MacroEditorDialog(self, self.app, {"name": "New Macro"})
         if editor.result:
             name = editor.result.get('name')
             if not name: return
@@ -105,7 +106,7 @@ class MacroManagerDialog(tk.Toplevel):
         macros = self.app.profiles[self.app.active_profile].get('macros', {})
         data = macros.get(name)
         
-        editor = MacroEditorDialog(self, data)
+        editor = MacroEditorDialog(self, self.app, data)
         if editor.result:
             new_name = editor.result.get('name')
             
@@ -135,7 +136,7 @@ class MacroManagerDialog(tk.Toplevel):
         if not sel: return
         name = self.listbox.get(sel[0])
         
-        if messagebox.askyesno("Confirm", f"Delete macro '{name}'?"):
+        if messagebox.askyesno("Confirm", f"Delete macro '{name}'?", parent=self):
             del self.app.profiles[self.app.active_profile]['macros'][name]
             self.app.save_profiles()
             self.refresh_list()
@@ -212,9 +213,9 @@ class TextTypingDialog(tk.Toplevel):
             self.rand_max_entry.config(state='normal')
 
     def on_save(self):
-        content = self.text_input.get("1.0", tk.END).strip()
+        content = self.text_input.get("1.0", "end-1c")
         if not content:
-            messagebox.showwarning("Input Required", "Please enter text to type.")
+            messagebox.showwarning("Input Required", "Please enter text to type.", parent=self)
             return
             
         self.result = {
@@ -228,9 +229,102 @@ class TextTypingDialog(tk.Toplevel):
         self.destroy()
 
 
-class MacroEditorDialog(tk.Toplevel):
-    def __init__(self, parent, current_actions=None):
+
+class ActionKeyDialog(tk.Toplevel):
+    def __init__(self, parent):
         super().__init__(parent)
+        self.title("Add Key Action")
+        self.geometry("400x300")
+        self.resizable(False, False)
+        self.wm_attributes("-topmost", 1)
+        self.result = None
+        
+        self.pressed_keys = set()
+        self.listener = None
+        
+        # Main Frame
+        main_frame = Frame(self, padding=20)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        Label(main_frame, text="Key to Simulate:", style="Header.TLabel").pack(anchor=tk.W, pady=(0, 10))
+        
+        self.key_display_var = tk.StringVar(value="None")
+        self.display_lbl = Label(main_frame, textvariable=self.key_display_var, font=("Segoe UI", 14, "bold"), relief="sunken", background="white", anchor="center")
+        self.display_lbl.pack(fill=tk.X, pady=(0, 20), ipady=10)
+        
+        self.record_btn = Button(main_frame, text="Record Key", command=self.toggle_recording)
+        self.record_btn.pack(fill=tk.X, pady=(0, 20))
+        
+        Label(main_frame, text="Click Record, then press a single key.", foreground="#666").pack(anchor=tk.W)
+        
+        # Buttons
+        btn_frame = Frame(self, padding=20)
+        btn_frame.pack(side=tk.BOTTOM, fill=tk.X)
+        
+        ttk.Button(btn_frame, text="Add", command=self.on_add).pack(side=tk.RIGHT, padx=(5, 0))
+        ttk.Button(btn_frame, text="Cancel", command=self.destroy).pack(side=tk.RIGHT)
+        
+        self.protocol("WM_DELETE_WINDOW", self.on_close)
+        self.transient(parent)
+        self.grab_set()
+        self.wait_window(self)
+
+    def toggle_recording(self):
+        if self.listener:
+            self.stop_recording()
+        else:
+            self.start_recording()
+
+    def start_recording(self):
+        self.key_display_var.set("Press a key...")
+        self.record_btn.configure(text="Stop Recording") 
+        # Use pynput listener
+        self.listener = Listener(on_press=self.on_press)
+        self.listener.start()
+
+    def stop_recording(self):
+        if self.listener:
+            self.listener.stop()
+            self.listener = None
+        self.record_btn.configure(text="Record Key")
+
+    def on_press(self, key):
+        k_str = ""
+        try:
+            if hasattr(key, 'char') and key.char:
+                k_str = key.char
+            elif hasattr(key, 'name'):
+                k_str = key.name
+            else:
+                k_str = str(key).replace('Key.', '')
+        except Exception:
+            k_str = str(key)
+        
+        # Update UI and Stop
+        self.display_lbl.after(0, lambda: self.finish_recording(k_str))
+        return False
+
+    def finish_recording(self, key_str):
+        self.key_display_var.set(key_str)
+        self.stop_recording()
+
+    def on_close(self):
+        self.stop_recording()
+        self.destroy()
+
+    def on_add(self):
+        key = self.key_display_var.get()
+        if not key or key == "None" or key == "Press a key...":
+             messagebox.showwarning("Input Required", "Please record a key.", parent=self)
+             return
+             
+        self.result = {"type": "key", "key": key}
+        self.destroy()
+
+class MacroEditorDialog(tk.Toplevel):
+    def __init__(self, parent, app, current_actions=None):
+        super().__init__(parent)
+        self.app = app
         self.title("Macro Editor")
         self.geometry("700x600")
         self.wm_attributes("-topmost", 1) # Ensure visible over main window
@@ -405,19 +499,17 @@ class MacroEditorDialog(tk.Toplevel):
         
         self.wait_variable(click_detected)
         
-        # Wait for listener to cleanup?
-        # listener.join() # It should be done since on_c returned False
-            
         self.deiconify()
         if coords:
             self.actions.append({"type": "click", "coords": [coords[0][0], coords[0][1]], "button": "left"})
             self.refresh_list()
 
     def add_key(self):
-        k = simpledialog.askstring("Add Key", "Enter key name (e.g. enter, tab, a):", parent=self)
-        if k:
-            self.actions.append({"type": "key", "key": k})
+        d = ActionKeyDialog(self)
+        if d.result:
+            self.actions.append(d.result)
             self.refresh_list()
+
 
     def move_up(self):
         sel = self.listbox.curselection()
@@ -456,7 +548,7 @@ class MacroEditorDialog(tk.Toplevel):
                 "value": val
             }
         except ValueError:
-            messagebox.showerror("Invalid Input", "Please enter a valid number for Loop Count or Duration.")
+            messagebox.showerror("Invalid Input", "Please enter a valid number for Loop Count or Duration.", parent=self)
             return
 
         # Return a dict structure for the macro
@@ -632,7 +724,7 @@ class KeybindEditorDialog(tk.Toplevel):
                  self.ok_btn.configure(text="Set Location & Save")
 
     def create_new_macro(self):
-        editor = MacroEditorDialog(self, {"name": "New Macro"})
+        editor = MacroEditorDialog(self, self.app, {"name": "New Macro"})
         if editor.result:
             name = editor.result.get('name')
             if not name: return
@@ -734,13 +826,13 @@ class KeybindEditorDialog(tk.Toplevel):
         action_type = self.action_var.get()
 
         if not key or key == "None" or key == "Press keys...":
-            messagebox.showwarning("Input Required", "Please record a key combination.")
+            messagebox.showwarning("Input Required", "Please record a key combination.", parent=self)
             return
             
         if action_type == ACTION_MACRO:
             name = self.macro_select_var.get()
             if not name:
-                messagebox.showwarning("Selection Required", "Please select a macro.")
+                messagebox.showwarning("Selection Required", "Please select a macro.", parent=self)
                 return
 
             data = {
@@ -753,6 +845,25 @@ class KeybindEditorDialog(tk.Toplevel):
 
 
 
+
+        if action_type == ACTION_TEXT:
+            content = self.text_input.get("1.0", "end-1c")
+            if not content:
+                messagebox.showwarning("Input Required", "Please enter text to type.", parent=self)
+                return
+
+            data = {
+                "type": ACTION_TEXT,
+                "content": content,
+                "delay_mode": self.delay_mode_var.get(),
+                "delay_static": self.static_delay_entry.get(),
+                "delay_min": self.rand_min_entry.get(),
+                "delay_max": self.rand_max_entry.get()
+            }
+            # Text actions don't need location usually
+            self.result = (key, data, False)
+            self.destroy()
+            return
 
         # Legacy/Mouse Logic
         should_update = self.update_loc_var.get() if self.edit_mode else True
@@ -792,6 +903,7 @@ class KeybindApp:
         # Kill-Switch State
         self.kill_switch_active = False
         self.running_macro = False
+        self.capture_key_callback = None # For requesting key capture from dialogs
         
         # Mouse Controller for advanced actions
         self.mouse = MouseController()
@@ -807,6 +919,9 @@ class KeybindApp:
         
         # Check Display Server (Linux)
         self.check_display_server()
+
+        # Initialize Input Engine
+        self.init_input_engine()
         
         # Check for xdotool
         self.has_xdotool = False
@@ -819,18 +934,79 @@ class KeybindApp:
                  pass # print("[WARNING] xdotool not found.")
         
         # Start Input Listeners
-        self.start_listeners()
+        # Start Input Listeners (Only if not already started by init_input_engine)
+        # init_input_engine starts them immediately for both Evdev and Pynput (in fallback), 
+        # so we don't need to call them again here.
+        self.check_listeners_alive() # Just start the heartbeat
+    
+    def init_input_engine(self):
+        # Determine which engine to use
+        use_evdev = False
+        if platform.system() == 'Linux':
+            # Always prefer Evdev on Linux for global input support (Wayland & X11)
+            use_evdev = True
+            print("[INFO] Linux detected. Attempting to use Evdev Engine.")
+        
+        self.evdev_init_error = None
+        
+        if use_evdev:
+            try:
+                self.input_engine = EvdevEngine()
+                self.input_engine.start_listeners(on_press=self.on_key_press, on_release=self.on_key_release)
+                self.input_status_var.set("Input: Evdev (Global)")
+                print("[INFO] Evdev Engine started successfully.")
+            except Exception as e:
+                print(f"[ERROR] Failed to init Evdev: {e}")
+                self.evdev_init_error = str(e)
+                
+                # Fallback to Pynput
+                self.input_engine = PynputEngine()
+                self.input_engine.start_listeners(on_press=self.on_key_press, on_release=self.on_key_release)
+                self.input_status_var.set("Input: Pynput (Restricted)")
+                
+                # Show error dialog to user explaining the situation
+                error_msg = self.evdev_init_error or "Unknown Error"
+                permission_hint = ""
+                if "Permission denied" in error_msg or "uinput" in error_msg:
+                    permission_hint = (
+                        "\n\nIt looks like a permission issue.\n"
+                        "Please run 'sudo bash scripts/install_linux.sh' and restart your computer (or log out/in)."
+                    )
+
+                messagebox.showwarning("Input Engine Limitation", 
+                    f"Evdev Engine failed to start:\n{error_msg}{permission_hint}\n\n"
+                    "The application is running in FALLBACK (Pynput) mode.\n"
+                    "Global Hotkeys will NOT work on Wayland windows.\n"
+                    "They will only work when this app is focused."
+                )
+        else:
+            self.input_engine = PynputEngine()
+            print("[INFO] Using PynputEngine (Default for Windows/macOS)")
+            self.input_status_var.set("Input: Pynput")
+
+    def check_engine_health_and_fallback(self):
+        # Specific check for Evdev health
+        if isinstance(self.input_engine, EvdevEngine) and not self.input_engine.is_healthy():
+             error_msg = getattr(self.input_engine, 'last_error', "Unknown Error")
+             print(f"[ERROR] Evdev died: {error_msg}")
+             
+             # Show error once and stop using it
+             messagebox.showerror("Input Engine Died", 
+                 f"Evdev Engine stopped unexpectedly:\n{error_msg}\n\n"
+                 "Falling back to Pynput (Limited Functionality).")
+                 
+             try:
+                 self.input_engine.stop_listeners()
+             except: pass
+             
+             self.input_engine = PynputEngine()
+             self.input_engine.start_listeners(on_press=self.on_key_press, on_release=self.on_key_release)
+             self.input_status_var.set("Input: Pynput (Fallback)")
+
+
 
     def check_display_server(self):
-        if platform.system() == 'Linux':
-            session_type = os.environ.get('XDG_SESSION_TYPE')
-            if session_type == 'wayland':
-                # Show warning in GUI since binary users won't see console
-                messagebox.showwarning(
-                    "Wayland Detected", 
-                    "You are running on Wayland. Global input simulation is restricted.\n\n"
-                    "Please switch to X11 (Ubuntu on Xorg) for full functionality."
-                )
+        pass
 
 
 
@@ -915,10 +1091,14 @@ class KeybindApp:
         ttk.Button(bottom_frame, text="Clear All", command=self.clear_keybinds).pack(side=tk.RIGHT)
 
         # Status Bar
-        self.status_var = tk.StringVar()
-        self.status_var.set(f"Active Profile: {self.active_profile}")
-        self.status_label = Label(self.root, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W)
-        self.status_label.pack(side=tk.BOTTOM, fill=tk.X)
+        status_frame = Frame(self.root, relief=tk.SUNKEN, borderwidth=1)
+        status_frame.pack(side=tk.BOTTOM, fill=tk.X)
+        
+        self.status_var = tk.StringVar(value=f"Profile: {self.active_profile}")
+        Label(status_frame, textvariable=self.status_var, anchor=tk.W).pack(side=tk.LEFT, padx=5)
+        
+        self.input_status_var = tk.StringVar(value="Input: Init")
+        Label(status_frame, textvariable=self.input_status_var, anchor=tk.E).pack(side=tk.RIGHT, padx=5)
         
     def toggle_mini_mode(self):
         if not self.mini_mode:
@@ -994,19 +1174,36 @@ class KeybindApp:
             # Update button to show state
             self.add_button.config(state=tk.DISABLED, text="Click on Screen...")
             self.update_status(f"Click anywhere to bind '{key}' ({action_data})...")
+            
+            # Check for Evdev Engine (Wayland Support)
+            if isinstance(self.input_engine, EvdevEngine):
+                def on_evdev_c(x, y, button, pressed):
+                    if pressed:
+                        self.root.after(0, lambda: self.handle_click_main_thread(x, y))
+                
+                try:
+                    self.input_engine.capture_single_click(on_evdev_c)
+                except Exception as e:
+                    pass
 
     def perform_action(self, x, y, action_type):
-        original_position = pyautogui.position()
+        pos = self.input_engine.get_current_position()
+        try:
+            ox, oy = pos.x, pos.y
+        except AttributeError:
+            ox, oy = pos[0], pos[1]
+            
+        print(f"[Keybind] Executing {action_type} at ({x}, {y}) | Returning to ({ox}, {oy})")
         
         if action_type == ACTION_CLICK_RETURN:
 
             if platform.system() == 'Linux':
-                self.perform_linux_action(x, y, action_type, original_position)
+                self.perform_linux_action(x, y, action_type, ox, oy)
                 return
             
             pyautogui.click(x, y)
 
-            pyautogui.moveTo(original_position)
+            pyautogui.moveTo(ox, oy)
             
         elif action_type == ACTION_CLICK_STAY:
             pyautogui.click(x, y)
@@ -1014,52 +1211,56 @@ class KeybindApp:
             
         elif action_type == ACTION_DOUBLE_CLICK_RETURN:
             pyautogui.doubleClick(x, y)
-            pyautogui.moveTo(original_position)
+            pyautogui.moveTo(ox, oy)
             
         elif action_type == ACTION_DRAG_RETURN:
             # Move to target, hold down, move back, release
             pyautogui.moveTo(x, y)
             pyautogui.mouseDown()
             time.sleep(0.1) # Small delay for stability
-            pyautogui.moveTo(original_position)
+            pyautogui.moveTo(ox, oy)
             pyautogui.mouseUp()
             
         else:
             pyautogui.click(x, y)
-            pyautogui.moveTo(original_position)
+            pyautogui.moveTo(ox, oy)
 
-    def perform_linux_action(self, x, y, action_type, original_position):
-        if not self.has_xdotool:
-            print("[WARNING] Skipping Linux action: xdotool missing")
-            return
-
-        try:
-            # Common: Move to target
-            subprocess.run(['xdotool', 'mousemove', str(x), str(y)], check=True)
+    def perform_linux_action(self, x, y, action_type, ox, oy):
+        """Dispatches Keybind actions using logical Hybrid moves and UInput clicks."""
+        if action_type == ACTION_CLICK_RETURN:
+            self.input_engine.simulation_click(x, y, 'left')
+            time.sleep(0.1)
+            self.input_engine.simulation_move(ox, oy)
             
-            if action_type == ACTION_CLICK_RETURN:
-                subprocess.run(['xdotool', 'click', '1'], check=True)
-                subprocess.run(['xdotool', 'mousemove', str(original_position.x), str(original_position.y)], check=True)
-                
-            elif action_type == ACTION_CLICK_STAY:
-                subprocess.run(['xdotool', 'click', '1'], check=True)
-                
-            elif action_type == ACTION_DOUBLE_CLICK_RETURN:
-                subprocess.run(['xdotool', 'click', '--repeat', '2', '1'], check=True)
-                subprocess.run(['xdotool', 'mousemove', str(original_position.x), str(original_position.y)], check=True)
-                
-            elif action_type == ACTION_DRAG_RETURN:
-                subprocess.run(['xdotool', 'mousedown', '1'], check=True)
-                time.sleep(0.1)
-                subprocess.run(['xdotool', 'mousemove', str(original_position.x), str(original_position.y)], check=True)
-                subprocess.run(['xdotool', 'mouseup', '1'], check=True)
-                
-            else: # Default click return
-                subprocess.run(['xdotool', 'click', '1'], check=True)
-                subprocess.run(['xdotool', 'mousemove', str(original_position.x), str(original_position.y)], check=True)
-                
-        except Exception as e:
-            print(f"[ERROR] Linux action failed: {e}")
+        elif action_type == ACTION_CLICK_STAY:
+            self.input_engine.simulation_click(x, y, 'left')
+            
+        elif action_type == ACTION_DOUBLE_CLICK_RETURN:
+            self.input_engine.simulation_click(x, y, 'left')
+            time.sleep(0.08)
+            self.input_engine.simulation_click(x, y, 'left')
+            time.sleep(0.1)
+            self.input_engine.simulation_move(ox, oy)
+            
+        elif action_type == ACTION_DRAG_RETURN:
+            # Drag logic using Hybrid Move + UInput Buttons
+            self.input_engine.simulation_move(x, y)
+            time.sleep(0.1)
+            self.input_engine.simulation_mouse_down('left')
+            time.sleep(0.12)
+            self.input_engine.simulation_move(ox, oy)
+            time.sleep(0.1)
+            self.input_engine.simulation_mouse_up('left')
+            
+        else:
+            # Default fallback
+            self.input_engine.simulation_click(x, y, 'left')
+            time.sleep(0.1)
+            self.input_engine.simulation_move(ox, oy)
+
+        # 2. Key Injection (if any was intended by this action type in future)
+        # currently perform_action is mostly mouse-centric based on the Action Types.
+        # But if we had a Key Action here, we'd use self.input_engine.simulation_key()
 
 
     # --- Kill-Switch Implementation ---
@@ -1071,8 +1272,9 @@ class KeybindApp:
         print("EMERGENCY STOP TRIGGERED")
         
         # Stop listeners immediately
-        if hasattr(self, 'keyboard_listener') and self.keyboard_listener:
-            self.keyboard_listener.stop()
+        if hasattr(self, 'input_engine') and self.input_engine:
+            self.input_engine.stop_listeners()
+
         if hasattr(self, 'mouse_listener') and self.mouse_listener:
             self.mouse_listener.stop()
             
@@ -1081,7 +1283,18 @@ class KeybindApp:
         self.root.after(0, self.on_close)
 
     def on_key_press(self, key):
+        # DEBUG LOG
+        # print(f"DEBUG: Key Pressed: {key}")
+        
         if self.kill_switch_active:
+            return
+
+        if self.capture_key_callback:
+    
+            # Pass key to the requester (return True to keep listening, False to stop)
+            keep_listening = self.capture_key_callback(key)
+            if not keep_listening:
+                self.capture_key_callback = None
             return
 
         self.current_pressed_keys.add(key)
@@ -1101,6 +1314,7 @@ class KeybindApp:
         self.check_and_perform_action()
 
     def on_key_release(self, key):
+        # print(f"DEBUG: Key Released: {key}")
         if key in self.current_pressed_keys:
             self.current_pressed_keys.remove(key)
 
@@ -1116,14 +1330,12 @@ class KeybindApp:
             
             if current_combo_str in binds:
                  if self.running_macro:
-
-
-                     print("Macro already running, ignoring trigger.")
                      return
                  
                  self.running_macro = True
                  # Run in separate thread to not block listener
-                 threading.Thread(target=self.execute_bind, args=(binds[current_combo_str],), daemon=True).start()
+                 t = threading.Thread(target=self.execute_bind, args=(binds[current_combo_str],), daemon=True)
+                 t.start()
                  return
             
             # Fallback for legacy binds
@@ -1145,6 +1357,10 @@ class KeybindApp:
             return
             
         try:
+            # Safety Delay: Allow user to release trigger keys (e.g. Alt, Ctrl)
+            # This prevents the physical keys from interfering with the virtual injection (e.g. Alt+Space issues)
+            time.sleep(0.3)
+            
             # Detect Data Structure Type
             if isinstance(bind_data, list):
                  # Legacy: [x, y]
@@ -1219,26 +1435,13 @@ class KeybindApp:
                 coords = action.get('coords')
                 btn = action.get('button', 'left')
                 if coords:
-                    if platform.system() == 'Linux':
-                        self.execute_linux_click(coords[0], coords[1], btn)
-                    else:
-                        pyautogui.click(coords[0], coords[1], button=btn)
+                    self.input_engine.simulation_click(coords[0], coords[1], btn)
 
                     
             elif a_type == 'key':
                  k = action.get('key')
                  if k:
-                     pyautogui.press(k)
-
-    def execute_linux_click(self, x, y, button):
-        if not self.has_xdotool: return
-        btn_map = {'left': '1', 'middle': '2', 'right': '3'}
-        b = btn_map.get(button.lower(), '1')
-        try:
-            subprocess.run(['xdotool', 'mousemove', str(x), str(y), 'click', b], check=True)
-        except Exception as e:
-            print(f"[ERROR] Macro click failed: {e}")
-
+                     self.input_engine.simulation_key(k)
 
     def execute_text_action(self, action_data):
         content = action_data.get('content', '')
@@ -1250,29 +1453,17 @@ class KeybindApp:
         delay_max = float(action_data.get('delay_max', 0.15))
         static_delay = float(action_data.get('delay_static', 0.05))
         
-        for char in content:
-            if self.kill_switch_active:
-                return
-
-            # Type the character
-            try:
-                if char == '\n':
-                    pyautogui.press('enter')
-                else:
-                    pyautogui.write(char)
-            except Exception as e:
-                print(f"Error typing char '{char}': {e}")
-            
-            # Application Processing (Keep UI responsive-ish if on main thread)
-            # Since we are in a listener callback, we are blocking input! 
-            # This is why long macros are dangerous. Kill switch checks help.
-            
-            # Delay Logic
-            if delay_mode == 'static':
-                time.sleep(static_delay)
-            elif delay_mode == 'random':
-                time.sleep(random.uniform(delay_min, delay_max))
-            # 'none' = no sleep
+        # Define checker for kill switch
+        checker = lambda: self.kill_switch_active
+        
+        self.input_engine.simulation_text(
+            text=content,
+            delay_mode=delay_mode,
+            delay_static=static_delay,
+            delay_min=delay_min,
+            delay_max=delay_max,
+            kill_switch_checker=checker
+        )
             
     def on_click(self, x, y, button, pressed):
         if pressed and self.add_keybind_mode and self.pending_key:
@@ -1298,12 +1489,40 @@ class KeybindApp:
         self.update_status(f"Bound '{self.active_profile}' to ({x}, {y})")
 
     # Connect listeners
+    # Connect listeners
     def start_listeners(self):
-        self.keyboard_listener = Listener(on_press=self.on_key_press, on_release=self.on_key_release)
-        self.mouse_listener = MouseListener(on_click=self.on_click)
+        # Keyboard (via InputEngine)
+        self.input_engine.start_listeners(on_press=self.on_key_press, on_release=self.on_key_release)
         
-        self.keyboard_listener.start()
-        self.mouse_listener.start()
+        # Mouse (Keep Pynput for now, but handle failure on Wayland gracefully?)
+        # On Wayland, this might not work for global sniffing, but we leave it for X11/Windows.
+        try:
+            self.mouse_listener = MouseListener(on_click=self.on_click)
+            self.mouse_listener.start()
+        except Exception as e:
+             print(f"[WARNING] Mouse listener failed to start: {e}")
+             
+        # Start Heartbeat
+        self.check_listeners_alive()
+
+    def check_listeners_alive(self):
+        # Check Input Engine (Keyboard/Global)
+        if hasattr(self, 'input_engine') and self.input_engine:
+             self.check_engine_health_and_fallback()
+        
+        # Check Mouse Listener (Pynput)
+        if hasattr(self, 'mouse_listener') and self.mouse_listener:
+             if not self.mouse_listener.is_alive():
+                 print("[WARNING] Mouse listener died. Restarting...")
+                 try:
+                     # Re-create and start
+                     self.mouse_listener = MouseListener(on_click=self.on_click)
+                     self.mouse_listener.start()
+                 except Exception as e:
+                     print(f"[ERROR] Failed to restart mouse listener: {e}")
+
+        # Schedule next check (every 5 seconds)
+        self.root.after(5000, self.check_listeners_alive)
 
     # Profile Management methods
     def add_profile_action(self):
@@ -1437,7 +1656,7 @@ class KeybindApp:
                  current_data = {"coords": current_data, "type": ACTION_CLICK_RETURN}
             
             # Open Dialog in Edit Mode
-            dialog = KeybindEditorDialog(win, self.app, edit_mode=True, current_key=key, current_data=current_data)
+            dialog = KeybindEditorDialog(win, self, edit_mode=True, current_key=key, current_data=current_data)
             
             if dialog.result:
                 new_key, new_action_data, should_update_loc = dialog.result
@@ -1454,6 +1673,18 @@ class KeybindApp:
                      self.add_keybind_mode = True
                      self.add_button.config(state=tk.DISABLED, text="Click on Screen...")
                      self.update_status(f"Click anywhere to update '{new_key}'...")
+                     
+                     # Check for Evdev Engine (Wayland Support)
+                     if isinstance(self.input_engine, EvdevEngine):
+                         def on_evdev_edit_c(x, y, button, pressed):
+                             if pressed:
+                                 self.root.after(0, lambda: self.handle_click_main_thread(x, y))
+                         
+                         try:
+                             self.input_engine.capture_single_click(on_evdev_edit_c)
+                         except Exception as e:
+                             print(f"[ERROR] Failed to start evdev edit capture: {e}", file=sys.stderr)
+
                      # Close this window so they can click
                      win.destroy() 
                 else:
@@ -1487,8 +1718,15 @@ class KeybindApp:
         tree.bind("<Double-1>", lambda e: on_edit())
 
     def on_close(self):
-        self.keyboard_listener.stop()
-        self.mouse_listener.stop()
+        if hasattr(self, 'input_engine') and self.input_engine:
+            self.input_engine.stop_listeners()
+            
+        if hasattr(self, 'mouse_listener') and self.mouse_listener:
+            try:
+                self.mouse_listener.stop()
+            except:
+                pass
+                
         self.tray_icon.stop()
         self.root.destroy()
         sys.exit(0)
@@ -1513,23 +1751,8 @@ if __name__ == "__main__":
 
     # --- Linux Capability Checks ---
     if platform.system() == "Linux":
-        # Check for Wayland
-        if os.environ.get('WAYLAND_DISPLAY'):
-             messagebox.showwarning(
-                "Wayland Detected",
-                "Wayland display server detected.\n\n"
-                "Global input simulation (keybinds/macros) may not work correctly due to security restrictions.\n\n"
-                "Please switch to an X11 session (Ubuntu on Xorg) for full functionality."
-             )
-        
-        # Check for xdotool
-        if not shutil.which("xdotool"):
-            messagebox.showerror(
-                "Missing Dependency",
-                "xdotool is not installed.\n\n"
-                "This application requires xdotool to simulate input on Linux.\n\n"
-                "Please run: sudo apt-get install xdotool"
-            )
+        # Evdev Engine handles native input simulation on Linux/Wayland.
+        pass
     # -------------------------------
 
     app = KeybindApp(root)
