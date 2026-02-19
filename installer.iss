@@ -1,5 +1,5 @@
 [Files]
-Source: "dist\XvGKeybind.exe"; DestDir: "{userappdata}\XvG Auto"
+Source: "dist\XvG-AutoKeybind.exe"; DestDir: "{userappdata}\XvG Auto"
 Source: "icon.ico"; DestDir: "{userappdata}\XvG Auto"
 Source: "profiles.json"; DestDir: "{userappdata}\XvG Auto"; Permissions: everyone-modify
 
@@ -7,13 +7,13 @@ Source: "profiles.json"; DestDir: "{userappdata}\XvG Auto"; Permissions: everyon
 Name: "{userappdata}\XvG Auto"; Permissions: everyone-modify
 
 [Icons]
-Name: "{commondesktop}\Auto Keybind"; Filename: "{userappdata}\XvG Auto\XvGKeybind.exe"; Tasks: desktopicon
+Name: "{commondesktop}\Auto Keybind"; Filename: "{userappdata}\XvG Auto\XvG-AutoKeybind.exe"; Tasks: desktopicon
 
 [Tasks]
 Name: desktopicon; Description: "Create a shortcut"; GroupDescription: "Additional tasks:"
 
 [Run]
-Filename: "{app}\XvGKeybind.exe"; Parameters: "--icon_file=""{userappdata}\XvG Auto\icon.ico"""; Flags: nowait postinstall
+Filename: "{app}\XvG-AutoKeybind.exe"; Parameters: "--icon_file=""{userappdata}\XvG Auto\icon.ico"""; Flags: nowait postinstall
 
 [Setup]
 AppName=XvG AutoKeybind

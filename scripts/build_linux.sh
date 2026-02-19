@@ -20,10 +20,29 @@ rm -rf build dist
 # Note: hidden-import might be needed for pynput backends
 uv run pyinstaller --noconfirm --onefile --windowed --name "XvG-AutoKeybind" \
     --add-data "icon.ico:." \
+    --add-data "scripts/fix_wayland_permissions.sh:scripts" \
     --hidden-import "pynput.keyboard._xorg" \
     --hidden-import "pynput.mouse._xorg" \
     --collect-all "pystray" \
     autokeybind.py
 
-echo "Build Complete! Binary is in dist/XvG-AutoKeybind"
-echo "You can run it with: ./dist/XvG-AutoKeybind"
+# Create release directory
+mkdir -p dist/release
+mv dist/XvG-AutoKeybind dist/release/XvG-AutoKeybind
+
+# Copy install script
+cp scripts/install_linux.sh dist/release/install.sh
+chmod +x dist/release/install.sh
+
+echo "Build Complete!"
+echo ""
+echo "Release Package Created at: dist/release/"
+echo "Contains:"
+echo "  - XvG-AutoKeybind (Binary)"
+echo "  - install.sh (Setup Script)"
+echo ""
+echo "To test like a user:"
+echo "  1. cd dist/release"
+echo "  2. sudo ./install.sh"
+echo "  3. newgrp input"
+echo "  4. ./XvG-AutoKeybind"
