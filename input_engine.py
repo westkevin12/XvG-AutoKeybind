@@ -185,29 +185,187 @@ class EvdevEngine(InputEngine):
         self.stop_event = threading.Event()
         self.thread = None
         
-        # Mapping for Injection (Char -> Ecode)
-        # This is a basic US Layout mapping
-        self.char_map = {
-            'a': ecodes.KEY_A, 'b': ecodes.KEY_B, 'c': ecodes.KEY_C, 'd': ecodes.KEY_D,
-            'e': ecodes.KEY_E, 'f': ecodes.KEY_F, 'g': ecodes.KEY_G, 'h': ecodes.KEY_H,
-            'i': ecodes.KEY_I, 'j': ecodes.KEY_J, 'k': ecodes.KEY_K, 'l': ecodes.KEY_L,
-            'm': ecodes.KEY_M, 'n': ecodes.KEY_N, 'o': ecodes.KEY_O, 'p': ecodes.KEY_P,
-            'q': ecodes.KEY_Q, 'r': ecodes.KEY_R, 's': ecodes.KEY_S, 't': ecodes.KEY_T,
-            'u': ecodes.KEY_U, 'v': ecodes.KEY_V, 'w': ecodes.KEY_W, 'x': ecodes.KEY_X,
-            'y': ecodes.KEY_Y, 'z': ecodes.KEY_Z,
-            '1': ecodes.KEY_1, '2': ecodes.KEY_2, '3': ecodes.KEY_3, '4': ecodes.KEY_4,
-            '5': ecodes.KEY_5, '6': ecodes.KEY_6, '7': ecodes.KEY_7, '8': ecodes.KEY_8,
-            '9': ecodes.KEY_9, '0': ecodes.KEY_0,
-            '\n': ecodes.KEY_ENTER, ' ': ecodes.KEY_SPACE,
-            '\t': ecodes.KEY_TAB, '\x1b': ecodes.KEY_ESC,
-            '.': ecodes.KEY_DOT, ',': ecodes.KEY_COMMA, '/': ecodes.KEY_SLASH,
-            '-': ecodes.KEY_MINUS, '=': ecodes.KEY_EQUAL,
-            '[': ecodes.KEY_LEFTBRACE, ']': ecodes.KEY_RIGHTBRACE,
-            '\\': ecodes.KEY_BACKSLASH, ';': ecodes.KEY_SEMICOLON, '\'': ecodes.KEY_APOSTROPHE,
-            '`': ecodes.KEY_GRAVE
-        }
+        # Dynamic Character Map
+        self.char_map = {}
+        self._load_system_keymap()
         
         self._setup_uinput()
+
+    def _load_system_keymap(self):
+        """
+        Dynamically loads the system keymap using 'dumpkeys'.
+        Falls back to US layout if dumpkeys fails or is unavailable.
+        """
+        print("[Evdev] Loading system keymap...")
+        try:
+            # 1. Try to get keymap from dumpkeys
+            # We want 'dumpkeys --keys-only' to parse key definitions
+            import subprocess
+            result = subprocess.run(['dumpkeys', '--keys-only'], capture_output=True, text=True)
+            
+            if result.returncode == 0:
+                self._parse_dumpkeys(result.stdout)
+                print(f"[Evdev] Dynamic keymap loaded ({len(self.char_map)} keys).")
+            else:
+                print(f"[Evdev] dumpkeys failed (code {result.returncode}). Using US fallback.")
+                self._load_us_fallback()
+        except FileNotFoundError:
+            print("[Evdev] dumpkeys not found. Using US fallback.")
+            self._load_us_fallback()
+        except Exception as e:
+            print(f"[Evdev] Error loading keymap: {e}. Using US fallback.")
+            self._load_us_fallback()
+
+    def _parse_dumpkeys(self, output):
+        """
+        Parses `dumpkeys` output to build a char -> (ecodes.KEY_X, shift_needed) map.
+        Limit to common ASCII for now to avoid complexity with Compose/AltGr.
+        """
+        # Regex to match lines like: "keycode  30 = a  A"
+        import re
+        # This regex matches: keycode <num> = <symbol1> <symbol2> ...
+        # We only care about the first two columns (Base and Shift) for now.
+        line_re = re.compile(r'^\s*keycode\s+(\d+)\s*=\s*(\S+)(?:\s+(\S+))?')
+        
+        # Map Linux Keycode -> Ecodes Name -> Ecodes Value
+        # dumpkeys uses Linux Kernel keycodes. 
+        # python-evdev ecodes usually match, but let's be careful.
+        
+        self.char_map = {}
+        
+        for line in output.splitlines():
+            match = line_re.match(line)
+            if match:
+                k_code_str, base_sym, shift_sym = match.groups()
+                if not base_sym: continue
+                
+                try:
+                    # Convert linux keycode to evdev ecode
+                    # In evdev, ecodes are just integers. 
+                    # Usually Linux Keycode N corresponds to ecodes.KEY_... 
+                    # However, mapping raw keycode number to ecodes constant is tricky 
+                    # without a complete lookup. 
+                    # Fortunately, evdev.ecodes contains the reverse mapping.
+                    
+                    k_code = int(k_code_str)
+                    
+                    # Verify this keycode is a valid KEY_* event
+                    # We can use evdev.ecodes.keys[k_code] to check
+                    if k_code not in evdev.ecodes.keys:
+                        continue
+                        
+                    # Now map the symbols (e.g. 'a', 'plus', 'Return') to chars
+                    self._add_to_map(base_sym, k_code, shift=False)
+                    if shift_sym:
+                        self._add_to_map(shift_sym, k_code, shift=True)
+                        
+                except Exception:
+                    continue
+            
+    def _add_to_map(self, symbol_name, keycode, shift):
+        """
+        Helper to resolve kernel symbol names to chars and add to map.
+        """
+        # 1. Common named symbols
+        symbol_table = {
+            'space': ' ', 'spc': ' ', 'Space': ' ',
+            'Return': '\n', 'enter': '\n',
+            'Tab': '\t', 'tab': '\t',
+            'Escape': '\x1b', 'esc': '\x1b',
+            'BackSpace': '\x08', 'Delete': '\x7f',
+            'period': '.', 'comma': ',', 'slash': '/', 'backslash': '\\',
+            'minus': '-', 'equal': '=', 'plus': '+',
+            'bracketleft': '[', 'bracketright': ']',
+            'braceleft': '{', 'braceright': '}',
+            'semicolon': ';', 'colon': ':',
+            'apostrophe': '\'', 'quotedbl': '"', 'grave': '`', 'asciitilde': '~',
+            'exclam': '!', 'at': '@', 'numbersign': '#', 'dollar': '$',
+            'percent': '%', 'asciicircum': '^', 'ampersand': '&', 'asterisk': '*',
+            'parenleft': '(', 'parenright': ')', 'underscore': '_',
+            'less': '<', 'greater': '>', 'question': '?', 'bar': '|'
+        }
+        
+        char = None
+        
+        # Is it a single char? (e.g. 'a', '1')
+        if len(symbol_name) == 1:
+            char = symbol_name
+        
+        # Is it in our table?
+        elif symbol_name in symbol_table:
+            char = symbol_table[symbol_name]
+            
+        # Is it a synoynm like 'nul'?
+        elif symbol_name == 'nul':
+            return 
+            
+        if char:
+            # We only want to map printable characters primarily
+            # But \n, \t, etc are fine.
+            if char not in self.char_map:
+                # Prefer unshifted if available
+                self.char_map[char] = (keycode, shift)
+            elif not shift and self.char_map[char][1] == True:
+                # If we have a shifted entry, but found an unshifted one, overwrite it.
+                # Example: 'a' is Shift+A? No. 
+                # But sometimes maps validly point to same key.
+                self.char_map[char] = (keycode, shift)
+
+    def _load_us_fallback(self):
+        """
+        Loads the standard US layout as a fallback.
+        """
+        self.char_map = {}
+        print("[Evdev] Loading US Fallback Map...")
+        
+        # Helper to add range
+        def add(k, code, shift=False):
+            self.char_map[k] = (code, shift)
+            
+        # a-z
+        for i in range(ord('a'), ord('z') + 1):
+            c = chr(i)
+            # Find ecode for KEY_A etc.
+            # We assume KEY_A ... KEY_Z are contiguous or we rely on name
+            code = getattr(ecodes, f"KEY_{c.upper()}", None)
+            if code:
+                add(c, code, False)
+                add(c.upper(), code, True)
+                
+        # 0-9
+        for i in range(0, 10):
+            c = str(i)
+            code = getattr(ecodes, f"KEY_{c}", None)
+            if code:
+                add(c, code, False)
+        
+        # Symbols (US Standard)
+        # Format: char: (KEY_NAME, shift)
+        special = {
+            ' ': ('SPACE', False), '\n': ('ENTER', False), '\t': ('TAB', False), '\x1b': ('ESC', False),
+            '`': ('GRAVE', False), '~': ('GRAVE', True),
+            '-': ('MINUS', False), '_': ('MINUS', True),
+            '=': ('EQUAL', False), '+': ('EQUAL', True),
+            '[': ('LEFTBRACE', False), '{': ('LEFTBRACE', True),
+            ']': ('RIGHTBRACE', False), '}': ('RIGHTBRACE', True),
+            '\\': ('BACKSLASH', False), '|': ('BACKSLASH', True),
+            ';': ('SEMICOLON', False), ':': ('SEMICOLON', True),
+            '\'': ('APOSTROPHE', False), '"': ('APOSTROPHE', True),
+            ',': ('COMMA', False), '<': ('COMMA', True),
+            '.': ('DOT', False), '>': ('DOT', True),
+            '/': ('SLASH', False), '?': ('SLASH', True),
+            '!': ('1', True), '@': ('2', True), '#': ('3', True), '$': ('4', True),
+            '%': ('5', True), '^': ('6', True), '&': ('7', True), '*': ('8', True),
+            '(': ('9', True), ')': ('0', True)
+        }
+        
+        for char, (key_name, shift) in special.items():
+            code = getattr(ecodes, f"KEY_{key_name}", None)
+            if code:
+                add(char, code, shift)
+        
+        self._setup_uinput()
+
 
     def get_current_position(self):
         """Unified pixel-perfect coordinate source (Wayland Compatible)."""
@@ -591,56 +749,17 @@ class EvdevEngine(InputEngine):
         
         import random
 
-        # Extended Mapping for US Layout
-        # Char -> (Key Name Suffix, Shift Required)
-        # We use a comprehensive map to cover symbols that aren't just A-Z or 0-9
-        
-        # Base mappings (Copy from existing logic but formalized)
-        char_map = {}
-        
-        # 1. Letters a-z
-        for i in range(ord('a'), ord('z') + 1):
-            c = chr(i)
-            char_map[c] = (c.upper(), False)
-            char_map[c.upper()] = (c.upper(), True)
-            
-        # 2. Numbers 0-9
-        for i in range(0, 10):
-            s = str(i)
-            char_map[s] = (s, False)
-            
-        # 3. Special Symbols (US Layout)
-        # Format: Symbol: (KeySuffix, Shift)
-        special_map = {
-            ' ': ('SPACE', False), '\n': ('ENTER', False), '\t': ('TAB', False), '\x1b': ('ESC', False),
-            '`': ('GRAVE', False), '~': ('GRAVE', True),
-            '-': ('MINUS', False), '_': ('MINUS', True),
-            '=': ('EQUAL', False), '+': ('EQUAL', True),
-            '[': ('LEFTBRACE', False), '{': ('LEFTBRACE', True),
-            ']': ('RIGHTBRACE', False), '}': ('RIGHTBRACE', True),
-            '\\': ('BACKSLASH', False), '|': ('BACKSLASH', True),
-            ';': ('SEMICOLON', False), ':': ('SEMICOLON', True),
-            '\'': ('APOSTROPHE', False), '"': ('APOSTROPHE', True),
-            ',': ('COMMA', False), '<': ('COMMA', True),
-            '.': ('DOT', False), '>': ('DOT', True),
-            '/': ('SLASH', False), '?': ('SLASH', True),
-            '!': ('1', True), '@': ('2', True), '#': ('3', True), '$': ('4', True),
-            '%': ('5', True), '^': ('6', True), '&': ('7', True), '*': ('8', True),
-            '(': ('9', True), ')': ('0', True)
-        }
-        char_map.update(special_map)
 
         for char in text:
             if kill_switch_checker and kill_switch_checker(): return
             
-            mapping = char_map.get(char)
+            mapping = self.char_map.get(char)
             if not mapping:
                 # Fallback check?
                 print(f"[Evdev] Warning: No mapping for char '{char}'")
                 continue
                 
-            suffix, shift_needed = mapping
-            code = ecodes.ecodes.get(f"KEY_{suffix}")
+            code, shift_needed = mapping
             
             if code:
                 if shift_needed:

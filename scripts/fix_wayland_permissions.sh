@@ -2,25 +2,43 @@
 # Script to fix Wayland/Evdev Permissions (uinput)
 # This allows the application to inject mouse/keyboard events without root.
 
+APP_NAME="XvG-AutoKeybind"
+
+# Function to run with root privileges (sudo or pkexec)
+elevate() {
+    if [ "$EUID" -eq 0 ]; then
+        "$@"
+    else
+        if command -v pkexec &> /dev/null; then
+            echo "Requesting privileges via pkexec..."
+            pkexec "$@"
+        else
+            echo "Requesting privileges via sudo..."
+            sudo "$@"
+        fi
+    fi
+}
+
 echo "Fixing Wayland/Evdev Permissions (uinput)..."
 
-# Add current user to input and uinput groups
-sudo usermod -aG input $USER
-if getent group uinput > /dev/null; then
-    sudo usermod -aG uinput $USER
-fi
+RULES_FILE="/etc/udev/rules.d/99-xvga-uinput.rules"
+RULES_CONTENT='
+# XvG Virtual Devices - Grant access to current user
+KERNEL=="uinput", SUBSYSTEM=="misc", TAG+="uaccess", OPTIONS+="static_node=uinput"
 
-# Create udev rule for uinput
-echo "Creating udev rule for /dev/uinput..."
-echo 'KERNEL=="uinput", SUBSYSTEM=="misc", MODE="0660", GROUP="input", OPTIONS+="static_node=uinput"' | sudo tee /etc/udev/rules.d/99-xvga-uinput.rules
+# Physical Keyboards - Grant access for sniffing (uaccess prevents other users from spying)
+SUBSYSTEM=="input", ENV{ID_INPUT_KEYBOARD}=="1", TAG+="uaccess"
+'
+
+echo "Updating udev rules..."
+echo "$RULES_CONTENT" | elevate tee "$RULES_FILE" > /dev/null
 
 # Reload udev rules
 echo "Reloading udev rules..."
-sudo udevadm control --reload-rules
-sudo udevadm trigger
+elevate udevadm control --reload-rules
+elevate udevadm trigger
 
 echo "----------------------------------------------------------------"
 echo "Permissions updated successfully!"
-echo "IMPORTANT: You must log out and back in for group changes to take effect."
-echo "Alternatively, run 'newgrp input' in your terminal before starting the app."
+echo "Note: A reboot or re-login may be required for udev rules to fully apply."
 echo "----------------------------------------------------------------"
