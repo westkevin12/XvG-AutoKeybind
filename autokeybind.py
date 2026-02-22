@@ -1311,10 +1311,12 @@ class KeybindApp:
             self.emergency_stop()
             return
 
-        self.check_and_perform_action()
-
     def on_key_release(self, key):
         # print(f"DEBUG: Key Released: {key}")
+        
+        # Check for bind BEFORE removing the key
+        self.check_and_perform_action()
+
         if key in self.current_pressed_keys:
             self.current_pressed_keys.remove(key)
 
@@ -1357,9 +1359,15 @@ class KeybindApp:
             return
             
         try:
-            # Safety Delay: Allow user to release trigger keys (e.g. Alt, Ctrl)
-            # This prevents the physical keys from interfering with the virtual injection (e.g. Alt+Space issues)
-            time.sleep(0.3)
+            # wait for physical key release (up to 1.0s)
+            # This prevents modifier interference (e.g. holding Ctrl while macro types 'c' -> Ctrl+C)
+            start_wait = time.time()
+            while self.current_pressed_keys and (time.time() - start_wait) < 1.0:
+                 time.sleep(0.05)
+                 
+            # Force release modifiers via software just in case
+            if self.input_engine:
+                 self.input_engine.release_all_modifiers()
             
             # Detect Data Structure Type
             if isinstance(bind_data, list):

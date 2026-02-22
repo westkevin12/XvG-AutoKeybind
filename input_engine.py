@@ -66,6 +66,11 @@ class InputEngine(abc.ABC):
     @abc.abstractmethod
     def simulation_key(self, key_string: str):
         pass
+
+    @abc.abstractmethod
+    def release_all_modifiers(self):
+        """Releases common modifier keys to ensure clean state."""
+        pass
         
     def is_healthy(self):
         """Returns True if the engine is running properly."""
@@ -134,6 +139,15 @@ class PynputEngine(InputEngine):
         import pyautogui
         pyautogui.click(x, y, button=button)
 
+    def get_current_position(self):
+        """Returns the current mouse position using pynput Controller."""
+        try:
+            from pynput.mouse import Controller as MouseController
+            return MouseController().position
+        except:
+             import pyautogui
+             return pyautogui.position()
+             
     def simulation_move(self, x: int, y: int):
         import pyautogui
         pyautogui.moveTo(x, y)
@@ -160,6 +174,20 @@ class PynputEngine(InputEngine):
                 self.keyboard_controller.release(key_string)
         except Exception as e:
             print(f"[Pynput] Error simulating key '{key_string}': {e}")
+
+    def release_all_modifiers(self):
+        """Force release modifiers for Pynput."""
+        modifiers = [
+            Key.shift, Key.shift_r,
+            Key.ctrl, Key.ctrl_r,
+            Key.alt, Key.alt_r,
+            Key.cmd, Key.cmd_r
+        ]
+        for key in modifiers:
+            try:
+                self.keyboard_controller.release(key)
+            except:
+                pass
 
 
 class EvdevEngine(InputEngine):
