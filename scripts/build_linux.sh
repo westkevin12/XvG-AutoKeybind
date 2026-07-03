@@ -3,6 +3,14 @@ set -e
 
 echo "Building Linux Binary..."
 
+# Ensure all application dependencies are installed
+echo "Installing application dependencies..."
+if command -v uv &> /dev/null; then
+    uv pip install -r requirements.txt
+else
+    pip install -r requirements.txt
+fi
+
 # Ensure PyInstaller is installed
 if ! command -v pyinstaller &> /dev/null; then
     echo "Installing PyInstaller..."
@@ -24,6 +32,8 @@ uv run pyinstaller --noconfirm --onefile --windowed --name "XvG-AutoKeybind" \
     --hidden-import "pynput.keyboard._xorg" \
     --hidden-import "pynput.mouse._xorg" \
     --collect-all "pystray" \
+    --collect-all "pyautogui" \
+    --hidden-import "PIL" \
     autokeybind.py
 
 # Create release directory

@@ -7,6 +7,7 @@ A simple Python GUI application that allows users to bind keys to specific mouse
 - **Keybinding**: Bind any key combination to specific screen coordinates.
 - **Action Types**: Support for Click, Double-Click, Drag, and more.
 - **Macro Suite**: Create and save complex sequences of clicks, keystrokes, and delays.
+- **Auto Clicker**: Built-in click-in-place action — click at cursor position with configurable button (Left/Right/Middle), click type (Single/Double), delay interval, and loop mode.
 - **Auto-Typer**: Integrated text typing with human-like random delay support.
 - **Profile Management**: Save multiple sets of keybinds for different applications or games.
 - **Safety Kill-Switch**: Global emergency stop (`Ctrl + Alt + K`) or `Esc` to halt all actions.
@@ -83,6 +84,9 @@ pip install -r requirements.txt
       - **Drag & Return**: Hardware-synced drag operations.
 4.  **Macro Editor**:
     - Use the **"Manage Macros"** button to build sequences.
+    - **Actions**: Delay, Text, Click (at coordinates), **Click (In Place)** (at cursor), and Key.
+    - **Playback Modes**: Play Once, Loop (Count), Loop (Time), or Infinite Loop.
+    - **Auto Clicker**: Add a **Click (In Place)** action + a **Delay** action, set playback to **Infinite Loop**, and bind to a hotkey.
     - **Tip**: In the text editor, use **`\n`** for **Enter**.
 5.  **Global Kill-Switch**:
     - Press **`Ctrl + Alt + K`** to exit immediately.

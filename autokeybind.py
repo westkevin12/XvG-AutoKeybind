@@ -230,6 +230,58 @@ class TextTypingDialog(tk.Toplevel):
 
 
 
+class ClickInPlaceDialog(tk.Toplevel):
+    """Dialog for configuring a Click (In Place) action - clicks at current cursor position."""
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.title("Add Click (In Place)")
+        self.geometry("350x250")
+        self.resizable(False, False)
+        self.wm_attributes("-topmost", 1)
+        self.result = None
+
+        # Main Frame
+        main_frame = Frame(self, padding=20)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        Label(main_frame, text="Click at Current Cursor Position", style="Header.TLabel").pack(anchor=tk.W, pady=(0, 15))
+
+        # Mouse Button Selection
+        Label(main_frame, text="Mouse Button:").pack(anchor=tk.W, pady=(0, 5))
+        self.button_var = tk.StringVar(value="left")
+        btn_frame = Frame(main_frame)
+        btn_frame.pack(anchor=tk.W, pady=(0, 15))
+        ttk.Radiobutton(btn_frame, text="Left", variable=self.button_var, value="left").pack(side=tk.LEFT, padx=(0, 15))
+        ttk.Radiobutton(btn_frame, text="Right", variable=self.button_var, value="right").pack(side=tk.LEFT, padx=(0, 15))
+        ttk.Radiobutton(btn_frame, text="Middle", variable=self.button_var, value="middle").pack(side=tk.LEFT)
+
+        # Click Type Selection
+        Label(main_frame, text="Click Type:").pack(anchor=tk.W, pady=(0, 5))
+        self.click_type_var = tk.StringVar(value="single")
+        type_frame = Frame(main_frame)
+        type_frame.pack(anchor=tk.W, pady=(0, 15))
+        ttk.Radiobutton(type_frame, text="Single Click", variable=self.click_type_var, value="single").pack(side=tk.LEFT, padx=(0, 15))
+        ttk.Radiobutton(type_frame, text="Double Click", variable=self.click_type_var, value="double").pack(side=tk.LEFT)
+
+        # Buttons
+        btn_bar = Frame(self, padding=10)
+        btn_bar.pack(side=tk.BOTTOM, fill=tk.X)
+        ttk.Button(btn_bar, text="Add", command=self.on_add).pack(side=tk.RIGHT, padx=(5, 0))
+        ttk.Button(btn_bar, text="Cancel", command=self.destroy).pack(side=tk.RIGHT)
+
+        self.transient(parent)
+        self.grab_set()
+        self.wait_window(self)
+
+    def on_add(self):
+        self.result = {
+            "type": "click_in_place",
+            "button": self.button_var.get(),
+            "click_type": self.click_type_var.get()
+        }
+        self.destroy()
+
+
 class ActionKeyDialog(tk.Toplevel):
     def __init__(self, parent):
         super().__init__(parent)
@@ -419,6 +471,7 @@ class MacroEditorDialog(tk.Toplevel):
         ttk.Button(btn_frame, text="Add Delay", command=self.add_delay).pack(fill=tk.X, pady=2)
         ttk.Button(btn_frame, text="Add Text", command=self.add_text).pack(fill=tk.X, pady=2)
         ttk.Button(btn_frame, text="Add Click", command=self.add_click).pack(fill=tk.X, pady=2)
+        ttk.Button(btn_frame, text="Add Click (In Place)", command=self.add_click_in_place).pack(fill=tk.X, pady=2)
         ttk.Button(btn_frame, text="Add Key", command=self.add_key).pack(fill=tk.X, pady=2)
         
         ttk.Separator(btn_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=10)
@@ -463,6 +516,10 @@ class MacroEditorDialog(tk.Toplevel):
                 desc += f" '{short}'"
             elif t == 'click':
                 desc += f" {action.get('coords')}"
+            elif t == 'click_in_place':
+                btn = action.get('button', 'left').capitalize()
+                click_type = action.get('click_type', 'single').capitalize()
+                desc += f" ({click_type} {btn} at Cursor)"
             elif t == 'key':
                 desc += f" [{action.get('key')}]"
             
@@ -502,6 +559,12 @@ class MacroEditorDialog(tk.Toplevel):
         self.deiconify()
         if coords:
             self.actions.append({"type": "click", "coords": [coords[0][0], coords[0][1]], "button": "left"})
+            self.refresh_list()
+
+    def add_click_in_place(self):
+        d = ClickInPlaceDialog(self)
+        if d.result:
+            self.actions.append(d.result)
             self.refresh_list()
 
     def add_key(self):
@@ -903,6 +966,8 @@ class KeybindApp:
         # Kill-Switch State
         self.kill_switch_active = False
         self.running_macro = False
+        self.macro_cancelled = False
+        self.current_running_bind = None
         self.capture_key_callback = None # For requesting key capture from dialogs
         
         # Mouse Controller for advanced actions
@@ -1331,23 +1396,32 @@ class KeybindApp:
             binds = self.profiles[self.active_profile]['keybinds']
             
             if current_combo_str in binds:
-                 if self.running_macro:
-                     return
-                 
-                 self.running_macro = True
-                 # Run in separate thread to not block listener
-                 t = threading.Thread(target=self.execute_bind, args=(binds[current_combo_str],), daemon=True)
-                 t.start()
-                 return
+                  if self.running_macro:
+                      if self.current_running_bind == current_combo_str:
+                          self.macro_cancelled = True
+                      return
+                  
+                  self.macro_cancelled = False
+                  self.current_running_bind = current_combo_str
+                  self.running_macro = True
+                  # Run in separate thread to not block listener
+                  t = threading.Thread(target=self.execute_bind, args=(binds[current_combo_str],), daemon=True)
+                  t.start()
+                  return
             
             # Fallback for legacy binds
             if current_combo_str.lower() in binds:
-                 if self.running_macro: return
-                 
-                 self.running_macro = True
-                 # Run in separate thread to not block listener
-                 threading.Thread(target=self.execute_bind, args=(binds[current_combo_str.lower()],), daemon=True).start()
-                 return
+                  if self.running_macro:
+                      if self.current_running_bind == current_combo_str.lower():
+                          self.macro_cancelled = True
+                      return
+                  
+                  self.running_macro = True
+                  self.macro_cancelled = False
+                  self.current_running_bind = current_combo_str.lower()
+                  # Run in separate thread to not block listener
+                  threading.Thread(target=self.execute_bind, args=(binds[current_combo_str.lower()],), daemon=True).start()
+                  return
         except Exception as e:
             print(f"Error in listener callback: {e}")
             import traceback
@@ -1400,29 +1474,31 @@ class KeybindApp:
                     elif mode == 'loop_count':
                         count = int(val)
                         for _ in range(count):
-                            if self.kill_switch_active: break
+                            if self.kill_switch_active or self.macro_cancelled: break
                             self.execute_macro(actions)
                     elif mode == 'loop_time':
                         end_time = time.time() + float(val)
                         while time.time() < end_time:
-                            if self.kill_switch_active: break
+                            if self.kill_switch_active or self.macro_cancelled: break
                             self.execute_macro(actions)
                     elif mode == 'infinite':
-                        while not self.kill_switch_active:
+                        while not self.kill_switch_active and not self.macro_cancelled:
                              self.execute_macro(actions)
                      
                  else:
                      # Standard single action (Legacy Dict)
                      coords = bind_data.get('coords')
                      if coords and len(coords) == 2:
-                        if not self.kill_switch_active:
+                        if not self.kill_switch_active and not self.macro_cancelled:
                              self.perform_action(coords[0], coords[1], action_type or ACTION_CLICK_RETURN)
         finally:
             self.running_macro = False
+            self.current_running_bind = None
+            self.macro_cancelled = False
 
     def execute_macro(self, actions_list):
         for action in actions_list:
-            if self.kill_switch_active:
+            if self.kill_switch_active or self.macro_cancelled:
                 return
                 
             a_type = action.get('type')
@@ -1446,6 +1522,18 @@ class KeybindApp:
                     self.input_engine.simulation_click(coords[0], coords[1], btn)
 
                     
+            elif a_type == 'click_in_place':
+                # Click at current cursor position without moving the mouse.
+                # Using simulation_click_in_place avoids sending EV_ABS events
+                # that cause aim drift in 3D games (e.g. Minecraft).
+                btn = action.get('button', 'left')
+                click_type = action.get('click_type', 'single')
+                
+                self.input_engine.simulation_click_in_place(btn)
+                if click_type == 'double':
+                    time.sleep(0.08)
+                    self.input_engine.simulation_click_in_place(btn)
+
             elif a_type == 'key':
                  k = action.get('key')
                  if k:
@@ -1462,7 +1550,7 @@ class KeybindApp:
         static_delay = float(action_data.get('delay_static', 0.05))
         
         # Define checker for kill switch
-        checker = lambda: self.kill_switch_active
+        checker = lambda: self.kill_switch_active or self.macro_cancelled
         
         self.input_engine.simulation_text(
             text=content,

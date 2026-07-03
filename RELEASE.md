@@ -1,13 +1,9 @@
-# Release v0.0.5
+# Release v0.0.6
 
-### Improvements & Fixes
+### New Features
 
-- **Macro Reliability**:
-  - Macros now wait for physical keys to be released before firing (1.0s timeout) to prevent modifier interference (e.g., unintended combinations like Ctrl+C when holding Ctrl).
-  - Explicit software release of modifiers (Shift, Ctrl, Alt, Cmd) before each macro execution.
-- **Keybind Engine**:
-  - Moved bind checks to the key release event for more consistent behavior.
-- **Wayland / Linux Setup**:
-  - Shifted to `uaccess`-based `udev` rules for device permissions, removing the need for manually managing `input`/`uinput` group membership.
-- **Input Engine**:
-  - Added `get_current_position` method to `PynputEngine` with fallback to `pyautogui`.
+- **Auto Clicker (Click In Place)**:
+  - New **"Add Click (In Place)"** action in the Macro Editor — clicks at the current cursor position instead of requiring stored coordinates.
+  - Configurable **mouse button** (Left, Right, Middle) and **click type** (Single, Double).
+  - Combine with a **Delay** action and **Infinite Loop** playback to create a fully configurable auto clicker, all within the existing macro system.
+  - Works on both Linux (Evdev/UInput) and Windows (Pynput).

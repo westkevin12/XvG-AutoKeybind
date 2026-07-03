@@ -46,6 +46,11 @@ class InputEngine(abc.ABC):
         pass
 
     @abc.abstractmethod
+    def simulation_click_in_place(self, button='left'):
+        """Click at the current cursor position without moving the mouse."""
+        pass
+
+    @abc.abstractmethod
     def simulation_move(self, x: int, y: int):
         pass
 
@@ -138,6 +143,11 @@ class PynputEngine(InputEngine):
     def simulation_click(self, x: int, y: int, button='left'):
         import pyautogui
         pyautogui.click(x, y, button=button)
+
+    def simulation_click_in_place(self, button='left'):
+        """Click at the current cursor position without moving the mouse."""
+        import pyautogui
+        pyautogui.click(button=button)
 
     def get_current_position(self):
         """Returns the current mouse position using pynput Controller."""
@@ -587,6 +597,19 @@ class EvdevEngine(InputEngine):
             self.simulation_mouse_up(button)
         except Exception as e:
             print(f"[Hybrid] Click failed: {e}", file=sys.stderr)
+
+    def simulation_click_in_place(self, button='left'):
+        """Click at the current cursor position WITHOUT moving the mouse.
+
+        This avoids sending EV_ABS events which 3D games (e.g. Minecraft)
+        interpret as camera/aim movement. Only button press/release is injected.
+        """
+        try:
+            self.simulation_mouse_down(button)
+            time.sleep(0.05)
+            self.simulation_mouse_up(button)
+        except Exception as e:
+            print(f"[Hybrid] Click-in-place failed: {e}", file=sys.stderr)
 
     def simulation_key(self, key_string: str):
         """Simulates key press via evdev for background macros, falls back to pynput."""
