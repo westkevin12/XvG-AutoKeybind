@@ -285,6 +285,7 @@ class ClickInPlaceDialog(tk.Toplevel):
 class ActionKeyDialog(tk.Toplevel):
     def __init__(self, parent):
         super().__init__(parent)
+        self.app = parent.app
         self.title("Add Key Action")
         self.geometry("400x300")
         self.resizable(False, False)
@@ -322,7 +323,7 @@ class ActionKeyDialog(tk.Toplevel):
         self.wait_window(self)
 
     def toggle_recording(self):
-        if self.listener:
+        if self.listener or getattr(self.app, 'capture_key_callback', None) == self.on_press_capture:
             self.stop_recording()
         else:
             self.start_recording()
@@ -330,15 +331,24 @@ class ActionKeyDialog(tk.Toplevel):
     def start_recording(self):
         self.key_display_var.set("Press a key...")
         self.record_btn.configure(text="Stop Recording") 
-        # Use pynput listener
-        self.listener = Listener(on_press=self.on_press)
-        self.listener.start()
+        
+        # Use main app capture callback
+        self.app.capture_key_callback = self.on_press_capture
+        if not isinstance(self.app.input_engine, EvdevEngine):
+            self.listener = Listener(on_press=self.on_press)
+            self.listener.start()
 
     def stop_recording(self):
+        if getattr(self.app, 'capture_key_callback', None) == self.on_press_capture:
+            self.app.capture_key_callback = None
         if self.listener:
             self.listener.stop()
             self.listener = None
         self.record_btn.configure(text="Record Key")
+
+    def on_press_capture(self, key):
+        self.on_press(key)
+        return False # Stop callback
 
     def on_press(self, key):
         k_str = ""
@@ -816,7 +826,7 @@ class KeybindEditorDialog(tk.Toplevel):
         macros = self.app.profiles[self.app.active_profile].get('macros', {})
         data = macros.get(name)
         
-        editor = MacroEditorDialog(self, data)
+        editor = MacroEditorDialog(self, self.app, data)
         if editor.result:
             new_name = editor.result.get('name')
             
@@ -847,7 +857,7 @@ class KeybindEditorDialog(tk.Toplevel):
             self.rand_max_entry.config(state='normal')
 
     def toggle_recording(self):
-        if self.listener:
+        if self.listener or getattr(self.app, 'capture_key_callback', None) == self.on_press:
             self.stop_recording()
         else:
             self.start_recording()
@@ -857,10 +867,14 @@ class KeybindEditorDialog(tk.Toplevel):
         self.key_display_var.set("Press keys...")
         self.record_btn.configure(text="Stop Recording") 
         
-        self.listener = Listener(on_press=self.on_press, on_release=self.on_release)
-        self.listener.start()
+        self.app.capture_key_callback = self.on_press
+        if not isinstance(self.app.input_engine, EvdevEngine):
+            self.listener = Listener(on_press=self.on_press, on_release=self.on_release)
+            self.listener.start()
 
     def stop_recording(self):
+        if getattr(self.app, 'capture_key_callback', None) == self.on_press:
+            self.app.capture_key_callback = None
         if self.listener:
             self.listener.stop()
             self.listener = None
@@ -869,7 +883,8 @@ class KeybindEditorDialog(tk.Toplevel):
     def on_press(self, key):
         self.pressed_keys.add(key)
         self.update_display()
-        
+        return True
+
     def on_release(self, key):
         if key in self.pressed_keys:
             pass
@@ -999,10 +1014,7 @@ class KeybindApp:
                  pass # print("[WARNING] xdotool not found.")
         
         # Start Input Listeners
-        # Start Input Listeners (Only if not already started by init_input_engine)
-        # init_input_engine starts them immediately for both Evdev and Pynput (in fallback), 
-        # so we don't need to call them again here.
-        self.check_listeners_alive() # Just start the heartbeat
+        self.start_listeners()
     
     def init_input_engine(self):
         # Determine which engine to use
@@ -1017,7 +1029,6 @@ class KeybindApp:
         if use_evdev:
             try:
                 self.input_engine = EvdevEngine()
-                self.input_engine.start_listeners(on_press=self.on_key_press, on_release=self.on_key_release)
                 self.input_status_var.set("Input: Evdev (Global)")
                 print("[INFO] Evdev Engine started successfully.")
             except Exception as e:
@@ -1026,7 +1037,6 @@ class KeybindApp:
                 
                 # Fallback to Pynput
                 self.input_engine = PynputEngine()
-                self.input_engine.start_listeners(on_press=self.on_key_press, on_release=self.on_key_release)
                 self.input_status_var.set("Input: Pynput (Restricted)")
                 
                 # Show error dialog to user explaining the situation
