@@ -323,7 +323,7 @@ class ActionKeyDialog(tk.Toplevel):
         self.wait_window(self)
 
     def toggle_recording(self):
-        if self.listener or getattr(self.app, 'capture_key_callback', None) == self.on_press_capture:
+        if getattr(self.app, 'capture_key_callback', None) == self.on_press_capture:
             self.stop_recording()
         else:
             self.start_recording()
@@ -332,18 +332,12 @@ class ActionKeyDialog(tk.Toplevel):
         self.key_display_var.set("Press a key...")
         self.record_btn.configure(text="Stop Recording") 
         
-        # Use main app capture callback
+        # Use main app capture callback exclusively (works for both Evdev and Pynput)
         self.app.capture_key_callback = self.on_press_capture
-        if not isinstance(self.app.input_engine, EvdevEngine):
-            self.listener = Listener(on_press=self.on_press)
-            self.listener.start()
 
     def stop_recording(self):
         if getattr(self.app, 'capture_key_callback', None) == self.on_press_capture:
             self.app.capture_key_callback = None
-        if self.listener:
-            self.listener.stop()
-            self.listener = None
         self.record_btn.configure(text="Record Key")
 
     def on_press_capture(self, key):
@@ -857,7 +851,7 @@ class KeybindEditorDialog(tk.Toplevel):
             self.rand_max_entry.config(state='normal')
 
     def toggle_recording(self):
-        if self.listener or getattr(self.app, 'capture_key_callback', None) == self.on_press:
+        if getattr(self.app, 'capture_key_callback', None) == self.on_press:
             self.stop_recording()
         else:
             self.start_recording()
@@ -867,17 +861,12 @@ class KeybindEditorDialog(tk.Toplevel):
         self.key_display_var.set("Press keys...")
         self.record_btn.configure(text="Stop Recording") 
         
+        # Use main app capture callback exclusively (works for both Evdev and Pynput)
         self.app.capture_key_callback = self.on_press
-        if not isinstance(self.app.input_engine, EvdevEngine):
-            self.listener = Listener(on_press=self.on_press, on_release=self.on_release)
-            self.listener.start()
 
     def stop_recording(self):
         if getattr(self.app, 'capture_key_callback', None) == self.on_press:
             self.app.capture_key_callback = None
-        if self.listener:
-            self.listener.stop()
-            self.listener = None
         self.record_btn.configure(text="Record Key")
         
     def on_press(self, key):
