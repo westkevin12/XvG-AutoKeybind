@@ -3,17 +3,30 @@ set -e
 
 echo "Building Linux Binary..."
 
-# Ensure all application dependencies are installed on system Python
-echo "Installing application dependencies..."
-python3 -m pip install --user --break-system-packages -r requirements.txt pyinstaller
-python3 -m pip install --user --break-system-packages --force-reinstall Pillow
+
 
 # Clean previous builds
 rm -rf build dist
 
+# Detect build tool: prefer uv, fallback to venv
+if command -v uv &> /dev/null; then
+    echo "Using uv to build in an isolated environment..."
+    uv venv .venv
+    source .venv/bin/activate
+    uv pip install -r requirements.txt pyinstaller
+    uv pip install --force-reinstall Pillow
+else
+    echo "uv not found, falling back to standard venv..."
+    python3 -m venv .venv
+    source .venv/bin/activate
+    pip install --upgrade pip
+    pip install -r requirements.txt pyinstaller
+    pip install --force-reinstall Pillow
+fi
+
 # Build
 # Note: hidden-import might be needed for pynput backends
-PYSTRAY_BACKEND=xorg python3 -m PyInstaller --noconfirm --onefile --windowed --name "XvG-AutoKeybind" \
+PYSTRAY_BACKEND=xorg pyinstaller --noconfirm --onefile --windowed --name "XvG-AutoKeybind" \
     --add-data "icon.ico:." \
     --add-data "scripts/fix_wayland_permissions.sh:scripts" \
     --hidden-import "pynput.keyboard._xorg" \
@@ -25,6 +38,10 @@ PYSTRAY_BACKEND=xorg python3 -m PyInstaller --noconfirm --onefile --windowed --n
     --hidden-import "PIL.ImageTk" \
     --hidden-import "PIL._tkinter_finder" \
     autokeybind.py
+
+# Deactivate and clean up virtual environment
+deactivate
+rm -rf .venv
 
 # Create release directory
 mkdir -p dist/release
