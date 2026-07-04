@@ -12,3 +12,8 @@ ACTION_TYPES = [
     ACTION_DRAG_RETURN,
     ACTION_MACRO
 ]
+
+DEFAULT_FONT = 'Segoe UI'
+PROFILES_FILE = 'profiles.json'
+ICON_FILE = 'icon.ico'
+

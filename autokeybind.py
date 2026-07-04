@@ -29,7 +29,10 @@ from constants import (
     ACTION_DRAG_RETURN,
     ACTION_MACRO,
     ACTION_TEXT,
-    ACTION_TYPES
+    ACTION_TYPES,
+    DEFAULT_FONT,
+    PROFILES_FILE,
+    ICON_FILE
 )
 from dialogs import (
     MacroManagerDialog,
@@ -50,11 +53,11 @@ class KeybindApp:
         self.style = Style()
         try:
             self.style.theme_use('clam')
-        except:
+        except Exception:
             pass # Fallback if clam not available
-        self.style.configure('TButton', font=('Segoe UI', 10), padding=5)
-        self.style.configure('TLabel', font=('Segoe UI', 10))
-        self.style.configure('Header.TLabel', font=('Segoe UI', 12, 'bold'))
+        self.style.configure('TButton', font=(DEFAULT_FONT, 10), padding=5)
+        self.style.configure('TLabel', font=(DEFAULT_FONT, 10))
+        self.style.configure('Header.TLabel', font=(DEFAULT_FONT, 12, 'bold'))
 
         self.root.geometry("300x550")
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -164,7 +167,8 @@ class KeybindApp:
                  
              try:
                  self.input_engine.stop_listeners()
-             except: pass
+             except Exception:
+                 pass
              
              self.input_engine = PynputEngine()
              self.input_engine.start_listeners(on_press=self.on_key_press, on_release=self.on_key_release)
@@ -173,6 +177,7 @@ class KeybindApp:
 
 
     def check_display_server(self):
+        # Placeholder: Add system checks for display server environment if required in the future.
         pass
 
 
@@ -181,9 +186,9 @@ class KeybindApp:
         self.profiles = {}
         default_profile_name = "Default"
         
-        if os.path.exists('profiles.json'):
+        if os.path.exists(PROFILES_FILE):
             try:
-                with open('profiles.json', 'r') as file:
+                with open(PROFILES_FILE, 'r') as file:
                     self.profiles = json.load(file)
             except (FileNotFoundError, json.JSONDecodeError):
                 pass # Handle empty or corrupt file gracefully
@@ -196,12 +201,12 @@ class KeybindApp:
             if default_profile_name in self.profiles:
                 self.active_profile = default_profile_name
             else:
-                self.active_profile = list(self.profiles.keys())[0]
+                self.active_profile = next(iter(self.profiles.keys()))
         
         self.save_profiles() # Ensure consistent state on disk
 
     def save_profiles(self):
-        with open('profiles.json', 'w') as file:
+        with open(PROFILES_FILE, 'w') as file:
             json.dump(self.profiles, file, indent=4)
 
     def setup_ui(self):
@@ -277,7 +282,7 @@ class KeybindApp:
             self.mini_frame = Frame(self.root, padding=10)
             self.mini_frame.pack(fill=tk.BOTH, expand=True)
             
-            ttk.Label(self.mini_frame, text=f"Active: {self.active_profile}", font=("Segoe UI", 12, "bold")).pack(pady=(5, 10))
+            ttk.Label(self.mini_frame, text=f"Active: {self.active_profile}", font=(DEFAULT_FONT, 12, "bold")).pack(pady=(5, 10))
             ttk.Button(self.mini_frame, text="Expand to Normal View", command=self.toggle_mini_mode).pack(fill=tk.X)
             
             self.status_label.pack_forget() # Hide status bar in mini mode
@@ -293,9 +298,9 @@ class KeybindApp:
     def set_window_icon(self):
         try:
             if getattr(sys, 'frozen', False):
-                icon_path = os.path.join(sys._MEIPASS, 'icon.ico')
+                icon_path = os.path.join(sys._MEIPASS, ICON_FILE)
             else:
-                icon_path = 'icon.ico'
+                icon_path = ICON_FILE
             
             if os.path.exists(icon_path):
                 icon = Image.open(icon_path)
@@ -350,7 +355,7 @@ class KeybindApp:
                 
                 try:
                     self.input_engine.capture_single_click(on_evdev_c)
-                except Exception as e:
+                except Exception:
                     pass
 
     def perform_action(self, x, y, action_type):
@@ -394,12 +399,7 @@ class KeybindApp:
 
     def perform_linux_action(self, x, y, action_type, ox, oy):
         """Dispatches Keybind actions using logical Hybrid moves and UInput clicks."""
-        if action_type == ACTION_CLICK_RETURN:
-            self.input_engine.simulation_click(x, y, 'left')
-            time.sleep(0.1)
-            self.input_engine.simulation_move(ox, oy)
-            
-        elif action_type == ACTION_CLICK_STAY:
+        if action_type == ACTION_CLICK_STAY:
             self.input_engine.simulation_click(x, y, 'left')
             
         elif action_type == ACTION_DOUBLE_CLICK_RETURN:
@@ -420,7 +420,7 @@ class KeybindApp:
             self.input_engine.simulation_mouse_up('left')
             
         else:
-            # Default fallback
+            # Default fallback (e.g. ACTION_CLICK_RETURN)
             self.input_engine.simulation_click(x, y, 'left')
             time.sleep(0.1)
             self.input_engine.simulation_move(ox, oy)
@@ -476,7 +476,6 @@ class KeybindApp:
         # Check Esc for stopping active macros
         if key == Key.esc and self.running_macro:
             self.emergency_stop()
-            return
 
     def on_key_release(self, key):
         # print(f"DEBUG: Key Released: {key}")
@@ -529,23 +528,57 @@ class KeybindApp:
             import traceback
             traceback.print_exc()
         
+    def _wait_for_physical_key_release(self):
+        start_wait = time.time()
+        while self.current_pressed_keys and (time.time() - start_wait) < 1.0:
+             time.sleep(0.05)
+        if self.input_engine:
+             self.input_engine.release_all_modifiers()
+
+    def _resolve_macro_bind_data(self, bind_data):
+        if 'macro_name' in bind_data:
+            macro_name = bind_data['macro_name']
+            macros = self.profiles[self.active_profile].get('macros', {})
+            if macro_name in macros:
+                return macros[macro_name]
+            print(f"Macro '{macro_name}' not found!")
+            return None
+        return bind_data
+
+    def _playback_macro(self, bind_data):
+        resolved = self._resolve_macro_bind_data(bind_data)
+        if not resolved:
+            return
+        actions = resolved.get('actions', [])
+        playback = resolved.get('playback', {})
+        mode = playback.get('mode', 'once')
+        val = playback.get('value', 0)
+        
+        if mode == 'once':
+            self.execute_macro(actions)
+        elif mode == 'loop_count':
+            for _ in range(int(val)):
+                if self.kill_switch_active or self.macro_cancelled:
+                    break
+                self.execute_macro(actions)
+        elif mode == 'loop_time':
+            end_time = time.time() + float(val)
+            while time.time() < end_time:
+                if self.kill_switch_active or self.macro_cancelled:
+                    break
+                self.execute_macro(actions)
+        elif mode == 'infinite':
+            while not self.kill_switch_active and not self.macro_cancelled:
+                 self.execute_macro(actions)
+
     def execute_bind(self, bind_data):
         if self.kill_switch_active:
             self.running_macro = False
             return
             
         try:
-            # wait for physical key release (up to 1.0s)
-            # This prevents modifier interference (e.g. holding Ctrl while macro types 'c' -> Ctrl+C)
-            start_wait = time.time()
-            while self.current_pressed_keys and (time.time() - start_wait) < 1.0:
-                 time.sleep(0.05)
-                 
-            # Force release modifiers via software just in case
-            if self.input_engine:
-                 self.input_engine.release_all_modifiers()
+            self._wait_for_physical_key_release()
             
-            # Detect Data Structure Type
             if isinstance(bind_data, list):
                  # Legacy: [x, y]
                  self.perform_action(bind_data[0], bind_data[1], ACTION_CLICK_RETURN)
@@ -555,38 +588,7 @@ class KeybindApp:
                  action_type = bind_data.get('type')
                  
                  if action_type == ACTION_MACRO:
-                    # Check for Macro Reference
-                    if 'macro_name' in bind_data:
-                        macro_name = bind_data['macro_name']
-                        macros = self.profiles[self.active_profile].get('macros', {})
-                        if macro_name in macros:
-                            # Use the referenced macro data
-                            bind_data = macros[macro_name]
-                        else:
-                            print(f"Macro '{macro_name}' not found!")
-                            return
-                    
-                    actions = bind_data.get('actions', [])
-                    playback = bind_data.get('playback', {})
-                    mode = playback.get('mode', 'once')
-                    val = playback.get('value', 0)
-                    
-                    if mode == 'once':
-                        self.execute_macro(actions)
-                    elif mode == 'loop_count':
-                        count = int(val)
-                        for _ in range(count):
-                            if self.kill_switch_active or self.macro_cancelled: break
-                            self.execute_macro(actions)
-                    elif mode == 'loop_time':
-                        end_time = time.time() + float(val)
-                        while time.time() < end_time:
-                            if self.kill_switch_active or self.macro_cancelled: break
-                            self.execute_macro(actions)
-                    elif mode == 'infinite':
-                        while not self.kill_switch_active and not self.macro_cancelled:
-                             self.execute_macro(actions)
-                     
+                     self._playback_macro(bind_data)
                  else:
                      # Standard single action (Legacy Dict)
                      coords = bind_data.get('coords')
@@ -598,6 +600,32 @@ class KeybindApp:
             self.current_running_bind = None
             self.macro_cancelled = False
 
+    def _handle_delay_action(self, action):
+        d_mode = action.get('mode', 'static')
+        if d_mode == 'random':
+             time.sleep(random.uniform(action.get('min', 0.1), action.get('max', 0.5)))
+        else:
+             time.sleep(action.get('time', 0.1))
+
+    def _handle_click_action(self, action):
+        coords = action.get('coords')
+        btn = action.get('button', 'left')
+        if coords:
+            self.input_engine.simulation_click(coords[0], coords[1], btn)
+
+    def _handle_click_in_place_action(self, action):
+        btn = action.get('button', 'left')
+        click_type = action.get('click_type', 'single')
+        self.input_engine.simulation_click_in_place(btn)
+        if click_type == 'double':
+            time.sleep(0.08)
+            self.input_engine.simulation_click_in_place(btn)
+
+    def _handle_key_action(self, action):
+        k = action.get('key')
+        if k:
+            self.input_engine.simulation_key(k)
+
     def execute_macro(self, actions_list):
         for action in actions_list:
             if self.kill_switch_active or self.macro_cancelled:
@@ -606,40 +634,19 @@ class KeybindApp:
             a_type = action.get('type')
             
             if a_type == 'delay':
-                # Pure Delay Action
-                d_mode = action.get('mode', 'static')
-                if d_mode == 'random':
-                     time.sleep(random.uniform(action.get('min', 0.1), action.get('max', 0.5)))
-                else:
-                     time.sleep(action.get('time', 0.1))
+                self._handle_delay_action(action)
                      
             elif a_type == 'text':
                 self.execute_text_action(action)
                 
             elif a_type == 'click':
-                # Simplified click action in macro
-                coords = action.get('coords')
-                btn = action.get('button', 'left')
-                if coords:
-                    self.input_engine.simulation_click(coords[0], coords[1], btn)
-
+                self._handle_click_action(action)
                     
             elif a_type == 'click_in_place':
-                # Click at current cursor position without moving the mouse.
-                # Using simulation_click_in_place avoids sending EV_ABS events
-                # that cause aim drift in 3D games (e.g. Minecraft).
-                btn = action.get('button', 'left')
-                click_type = action.get('click_type', 'single')
-                
-                self.input_engine.simulation_click_in_place(btn)
-                if click_type == 'double':
-                    time.sleep(0.08)
-                    self.input_engine.simulation_click_in_place(btn)
+                self._handle_click_in_place_action(action)
 
             elif a_type == 'key':
-                 k = action.get('key')
-                 if k:
-                     self.input_engine.simulation_key(k)
+                self._handle_key_action(action)
 
     def execute_text_action(self, action_data):
         content = action_data.get('content', '')
@@ -745,7 +752,7 @@ class KeybindApp:
                 del self.profiles[name]
                 
                 if self.active_profile == name:
-                    self.active_profile = list(self.profiles.keys())[0] # Switch to another
+                    self.active_profile = next(iter(self.profiles.keys())) # Switch to another
                 
                 self.save_profiles()
                 self.refresh_profile_list()
@@ -790,6 +797,70 @@ class KeybindApp:
 
     def show_macro_manager(self):
         MacroManagerDialog(self.root, self)
+
+    def _edit_selected_keybind(self, win, tree, populate_tree):
+        selected = tree.selection()
+        if not selected:
+            return
+        key = selected[0]
+        
+        binds = self.profiles[self.active_profile]['keybinds']
+        if key not in binds:
+            return
+        
+        current_data = binds[key]
+        if isinstance(current_data, list):
+             current_data = {"coords": current_data, "type": ACTION_CLICK_RETURN}
+        
+        dialog = KeybindEditorDialog(win, self, edit_mode=True, current_key=key, current_data=current_data)
+        if dialog.result:
+            new_key, new_action_data, should_update_loc = dialog.result
+            if new_key != key:
+                del self.profiles[self.active_profile]['keybinds'][key]
+            
+            if should_update_loc:
+                 self._enter_edit_click_to_set_mode(new_key, new_action_data)
+                 win.destroy() 
+            else:
+                 self._update_keybind_in_place(new_key, new_action_data, current_data)
+                 populate_tree()
+
+    def _enter_edit_click_to_set_mode(self, new_key, new_action_data):
+         self.pending_key = new_key
+         self.pending_action_type = new_action_data
+         self.add_keybind_mode = True
+         self.add_button.config(state=tk.DISABLED, text="Click on Screen...")
+         self.update_status(f"Click anywhere to update '{new_key}'...")
+         
+         if isinstance(self.input_engine, EvdevEngine):
+             def on_evdev_edit_c(x, y, button, pressed):
+                 if pressed:
+                     self.root.after(0, lambda: self.handle_click_main_thread(x, y))
+             try:
+                 self.input_engine.capture_single_click(on_evdev_edit_c)
+             except Exception as e:
+                 print(f"[ERROR] Failed to start evdev edit capture: {e}", file=sys.stderr)
+
+    def _update_keybind_in_place(self, new_key, new_action_data, current_data):
+         if isinstance(new_action_data, dict):
+             self.profiles[self.active_profile]['keybinds'][new_key] = new_action_data
+         else:
+             new_data = {
+                 "coords": current_data.get('coords'),
+                 "type": new_action_data
+             }
+             self.profiles[self.active_profile]['keybinds'][new_key] = new_data
+         self.save_profiles()
+
+    def _delete_selected_keybind(self, win, tree, populate_tree):
+        selected = tree.selection()
+        if not selected:
+            return
+        key = selected[0]
+        if messagebox.askyesno("Confirm", f"Delete bind for '{key}'?", parent=win):
+             del self.profiles[self.active_profile]['keybinds'][key]
+             self.save_profiles()
+             populate_tree()
 
     def show_keybinds(self):
         win = tk.Toplevel(self.root)
@@ -839,81 +910,11 @@ class KeybindApp:
         btn_frame = Frame(win, padding=10)
         btn_frame.pack(fill=tk.X)
 
-        def on_edit():
-            selected = tree.selection()
-            if not selected: return
-            key = selected[0]
-            
-            # Get current data
-            binds = self.profiles[self.active_profile]['keybinds']
-            if key not in binds: return # Should not happen
-            
-            current_data = binds[key]
-            # Normalize data if legacy
-            if isinstance(current_data, list):
-                 current_data = {"coords": current_data, "type": ACTION_CLICK_RETURN}
-            
-            # Open Dialog in Edit Mode
-            dialog = KeybindEditorDialog(win, self, edit_mode=True, current_key=key, current_data=current_data)
-            
-            if dialog.result:
-                new_key, new_action_data, should_update_loc = dialog.result
-                
-                # If key changed, we need to remove old entry
-                if new_key != key:
-                    del self.profiles[self.active_profile]['keybinds'][key]
-                
-                # Decide next steps
-                if should_update_loc:
-                     # Enter "Click to Set" mode
-                     self.pending_key = new_key
-                     self.pending_action_type = new_action_data
-                     self.add_keybind_mode = True
-                     self.add_button.config(state=tk.DISABLED, text="Click on Screen...")
-                     self.update_status(f"Click anywhere to update '{new_key}'...")
-                     
-                     # Check for Evdev Engine (Wayland Support)
-                     if isinstance(self.input_engine, EvdevEngine):
-                         def on_evdev_edit_c(x, y, button, pressed):
-                             if pressed:
-                                 self.root.after(0, lambda: self.handle_click_main_thread(x, y))
-                         
-                         try:
-                             self.input_engine.capture_single_click(on_evdev_edit_c)
-                         except Exception as e:
-                             print(f"[ERROR] Failed to start evdev edit capture: {e}", file=sys.stderr)
-
-                     # Close this window so they can click
-                     win.destroy() 
-                else:
-                    # Just update data in place
-                    # If new_action_data is a dict (Text/Macro), use it directly
-                    if isinstance(new_action_data, dict):
-                        self.profiles[self.active_profile]['keybinds'][new_key] = new_action_data
-                    else:
-                        new_data = {
-                            "coords": current_data.get('coords'),
-                            "type": new_action_data
-                        }
-                        self.profiles[self.active_profile]['keybinds'][new_key] = new_data
-                        
-                    self.save_profiles()
-                    populate_tree()
-
-        def on_delete():
-            selected = tree.selection()
-            if not selected: return
-            key = selected[0]
-            if messagebox.askyesno("Confirm", f"Delete bind for '{key}'?", parent=win):
-                 del self.profiles[self.active_profile]['keybinds'][key]
-                 self.save_profiles()
-                 populate_tree()
-
-        ttk.Button(btn_frame, text="Edit Selected", command=on_edit).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frame, text="Delete Selected", command=on_delete).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="Edit Selected", command=lambda: self._edit_selected_keybind(win, tree, populate_tree)).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="Delete Selected", command=lambda: self._delete_selected_keybind(win, tree, populate_tree)).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text="Close", command=win.destroy).pack(side=tk.RIGHT)
 
-        tree.bind("<Double-1>", lambda e: on_edit())
+        tree.bind("<Double-1>", lambda e: self._edit_selected_keybind(win, tree, populate_tree))
 
     def on_close(self):
         if hasattr(self, 'input_engine') and self.input_engine:
@@ -922,7 +923,7 @@ class KeybindApp:
         if hasattr(self, 'mouse_listener') and self.mouse_listener:
             try:
                 self.mouse_listener.stop()
-            except:
+            except Exception:
                 pass
                 
         self.tray_icon.stop()
@@ -932,9 +933,9 @@ class KeybindApp:
     # System Tray
     def setup_tray_icon(self):
         if getattr(sys, 'frozen', False):
-            icon_path = os.path.join(sys._MEIPASS, 'icon.ico')
+            icon_path = os.path.join(sys._MEIPASS, ICON_FILE)
         else:
-            icon_path = 'icon.ico'
+            icon_path = ICON_FILE
         
         image = Image.open(icon_path) if os.path.exists(icon_path) else Image.new('RGB', (64, 64), color='red')
         
