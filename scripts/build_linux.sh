@@ -8,10 +8,10 @@ echo "Building Linux Binary..."
 # Clean previous builds
 rm -rf build dist
 
-# Detect build tool: prefer uv, fallback to venv
+# Detect build tool: prefer uv for installation speed, fallback to standard pip
 if command -v uv &> /dev/null; then
-    echo "Using uv to build in an isolated environment..."
-    uv venv .venv
+    echo "Using uv to install dependencies in a system-linked venv..."
+    python3 -m venv .venv
     source .venv/bin/activate
     uv pip install -r requirements.txt pyinstaller
     uv pip install --force-reinstall Pillow
