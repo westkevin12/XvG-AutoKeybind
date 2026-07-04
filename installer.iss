@@ -7,7 +7,7 @@ Source: "profiles.json"; DestDir: "{userappdata}\XvG Auto"; Permissions: everyon
 Name: "{userappdata}\XvG Auto"; Permissions: everyone-modify
 
 [Icons]
-Name: "{commondesktop}\Auto Keybind"; Filename: "{userappdata}\XvG Auto\XvG-AutoKeybind.exe"; Tasks: desktopicon
+Name: "{commondesktop}\Auto Keybind"; Filename: "{userappdata}\XvG Auto\XvG-AutoKeybind.exe"; IconFilename: "{userappdata}\XvG Auto\icon.ico"; Tasks: desktopicon
 
 [Tasks]
 Name: desktopicon; Description: "Create a shortcut"; GroupDescription: "Additional tasks:"
@@ -27,3 +27,4 @@ AppVersion=1.0
 AppVerName=XvG AutoKeybind 1.0
 AppCopyright=Copyright 2026
 OutputBaseFilename=XvGAutoSetup
+SetupIconFile=icon.ico

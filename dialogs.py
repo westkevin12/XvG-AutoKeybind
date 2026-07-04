@@ -207,7 +207,7 @@ class ClickInPlaceDialog(tk.Toplevel):
     def __init__(self, parent):
         super().__init__(parent)
         self.title("Add Click (In Place)")
-        self.geometry("350x250")
+        self.geometry("350x320")
         self.resizable(False, False)
         self.wm_attributes("-topmost", 1)
         self.result = None
